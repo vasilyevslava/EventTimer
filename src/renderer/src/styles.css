@@ -705,6 +705,8 @@ input[type="time"] {
 
 .timer-scene {
   position: relative;
+  display: grid;
+  place-items: center;
   width: 100%;
   height: 100%;
   overflow: hidden;
@@ -712,6 +714,13 @@ input[type="time"] {
   color: #fff;
   background: #000;
   user-select: none;
+}
+
+.scene-frame {
+  position: relative;
+  width: min(100cqw, 177.778cqh);
+  height: min(100cqh, 56.25cqw);
+  container-type: size;
 }
 
 .timer-scene-output {
@@ -728,9 +737,9 @@ input[type="time"] {
 
 .scene-clock {
   position: absolute;
-  left: 2.2cqw;
-  top: 2.7cqh;
-  font-size: min(5.2cqw, 9.3cqh);
+  left: 1.9cqw;
+  top: 3.7cqh;
+  font-size: min(5.16cqw, 9.18cqh);
   font-weight: inherit;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -738,12 +747,12 @@ input[type="time"] {
 
 .scene-schedule {
   position: absolute;
-  right: 2.2cqw;
-  top: 2.5cqh;
-  font-size: min(2.65cqw, 5.2cqh);
+  right: 1.9cqw;
+  top: 1.9cqh;
+  font-size: min(2.56cqw, 4.55cqh);
   font-weight: inherit;
   font-variant-numeric: tabular-nums;
-  line-height: 1.18;
+  line-height: 1.2;
   text-align: right;
 }
 
@@ -757,10 +766,10 @@ input[type="time"] {
 .scene-heading {
   position: absolute;
   left: 50%;
-  top: 31.2cqh;
-  width: 78cqw;
+  top: 30.4cqh;
+  width: 86cqw;
   transform: translate(-50%, -50%);
-  font-size: min(3.3cqw, 6.4cqh);
+  font-size: min(3.22cqw, 5.73cqh);
   font-weight: inherit;
   line-height: 1;
 }
@@ -768,14 +777,14 @@ input[type="time"] {
 .scene-time {
   position: absolute;
   left: 50%;
-  top: 49.7cqh;
-  width: 82cqw;
+  top: 51.35cqh;
+  width: 92cqw;
   transform: translate(-50%, -50%);
   white-space: nowrap;
-  font-size: min(14.1cqw, 26.5cqh);
+  font-size: min(18.28cqw, 32.49cqh);
   font-weight: inherit;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -.04em;
+  letter-spacing: -.055em;
   line-height: .9;
 }
 
@@ -787,19 +796,20 @@ input[type="time"] {
 .scene-event-wrap {
   position: absolute;
   left: 50%;
-  top: 65.8cqh;
-  width: 60cqw;
-  padding-top: 4.2cqh;
+  top: 66.67cqh;
+  width: 72cqw;
+  padding-top: 3.6cqh;
   transform: translateX(-50%);
-  border-top: 1px solid color-mix(in srgb, currentColor 35%, transparent);
+  border-top: .17cqh solid color-mix(in srgb, currentColor 55%, transparent);
 }
 
 .scene-event {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: min(3.05cqw, 5.9cqh);
+  font-size: min(3.77cqw, 6.7cqh);
   font-weight: inherit;
+  letter-spacing: -.055em;
   line-height: 1;
   /*
    * SB Sans can paint a few pixels above its line box at fractional Windows
@@ -814,22 +824,22 @@ input[type="time"] {
 .scene-remaining,
 .scene-cost {
   position: absolute;
-  bottom: 4.2cqh;
+  bottom: 3.6cqh;
   display: flex;
   align-items: baseline;
   gap: 0.35em;
   font-weight: inherit;
   font-variant-numeric: tabular-nums lining-nums;
-  font-size: min(2.55cqw, 4.8cqh);
+  font-size: min(2.55cqw, 4.54cqh);
   font-feature-settings: "tnum" 1, "lnum" 1;
   line-height: 1;
   white-space: nowrap;
 }
 
-.scene-remaining { left: 3.2cqw; }
+.scene-remaining { left: 2.25cqw; }
 
 .scene-cost {
-  right: 3.2cqw;
+  right: 4.9cqw;
   justify-content: flex-end;
 }
 

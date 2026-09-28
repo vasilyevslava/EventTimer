@@ -50,41 +50,42 @@ export function EventTimerScene({ timer, output = false }: { timer: TimerState; 
       style={{ background, color: timer.fontColor }}
     >
       {timer.backgroundImage && <img className="scene-background" src={timer.backgroundImage} draggable={false} />}
+      <div className="scene-frame">
+        {timer.visibility.clock && <div className="scene-clock">{currentClock(now)}</div>}
 
-      {timer.visibility.clock && <div className="scene-clock">{currentClock(now)}</div>}
-
-      {timer.visibility.schedule && (
-        <div className="scene-schedule">
-          <div>Начало:&nbsp; {timer.startTime}</div>
-          <div>Конец:&nbsp; {timer.endTime}</div>
-        </div>
-      )}
-
-      <div className="scene-center">
-        {timer.visibility.heading && (
-          <div className="scene-heading">{timer.headings[timer.centralTimeMode]}</div>
+        {timer.visibility.schedule && (
+          <div className="scene-schedule">
+            <div>Начало:&nbsp; {timer.startTime}</div>
+            <div>Конец:&nbsp; {timer.endTime}</div>
+          </div>
         )}
-        <div className={`scene-time ${overtime ? 'overtime' : ''}`}>{centralText}</div>
-        {timer.visibility.eventName && (
-          <div className="scene-event-wrap">
-            <div className="scene-event" title={timer.eventName}>{timer.eventName || 'МЕРОПРИЯТИЕ'}</div>
+
+        <div className="scene-center">
+          {timer.visibility.heading && (
+            <div className="scene-heading">{timer.headings[timer.centralTimeMode]}</div>
+          )}
+          <div className={`scene-time ${overtime ? 'overtime' : ''}`}>{centralText}</div>
+          {timer.visibility.eventName && (
+            <div className="scene-event-wrap">
+              <div className="scene-event" title={timer.eventName}>{timer.eventName || 'МЕРОПРИЯТИЕ'}</div>
+            </div>
+          )}
+        </div>
+
+        {timer.visibility.remaining && (
+          <div className="scene-remaining">
+            {remainingLabel && <span>{remainingLabel}:</span>}
+            <span className="scene-remaining-value">{formatTimer(scheduledRemaining)}</span>
+          </div>
+        )}
+
+        {timer.visibility.cost && (
+          <div className={`scene-cost ${overtime ? 'overtime' : ''}`}>
+            {costLabel && <span className="scene-cost-label">{costLabel}:</span>}
+            <span className="scene-cost-value">{formattedCost}₽</span>
           </div>
         )}
       </div>
-
-      {timer.visibility.remaining && (
-        <div className="scene-remaining">
-          {remainingLabel && <span>{remainingLabel}:</span>}
-          <span className="scene-remaining-value">{formatTimer(scheduledRemaining)}</span>
-        </div>
-      )}
-
-      {timer.visibility.cost && (
-        <div className={`scene-cost ${overtime ? 'overtime' : ''}`}>
-          {costLabel && <span className="scene-cost-label">{costLabel}:</span>}
-          <span className="scene-cost-value">{formattedCost}₽</span>
-        </div>
-      )}
     </div>
   )
 }
