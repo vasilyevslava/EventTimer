@@ -1,8 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen } from 'electron'
 import type { OpenDialogOptions } from 'electron'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { extname, join } from 'node:path'
-import type { DisplayInfo, TimerSettings, TimerState } from '../shared'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname, extname, join } from 'node:path'
+import type { ControlLayout, DisplayInfo, TimerSettings, TimerState } from '../shared'
+
+const COMPACT_WINDOW = { width: 520, height: 384, minWidth: 460, minHeight: 350 }
+const EXPANDED_WINDOW = { width: 1440, height: 900, minWidth: 1040, minHeight: 700 }
 
 // Electron 43 can crash while starting its GPU process on macOS 15 before the
 // first window is created. This timer does not need GPU acceleration, so use
@@ -20,7 +23,31 @@ let pendingSettings: TimerSettings | null = null
 let settingsWriteTimer: NodeJS.Timeout | null = null
 
 function settingsPath(): string {
-  return join(app.getPath('userData'), 'timer-plus-settings.json')
+  return join(app.getPath('userData'), 'event-timer-settings.json')
+}
+
+function legacySettingsPaths(): string[] {
+  const folder = app.getPath('userData')
+  const appData = app.getPath('appData')
+  return [
+    join(folder, 'timer-plus-settings.json'),
+    join(appData, 'timer-plus', 'event-timer-settings.json'),
+    join(appData, 'timer-plus', 'timer-plus-settings.json'),
+    join(appData, 'EventTimer', 'event-timer-settings.json')
+  ]
+}
+
+function migrateSettings(): void {
+  const next = settingsPath()
+  if (existsSync(next)) return
+  const previous = legacySettingsPaths().find((path) => existsSync(path))
+  if (!previous) return
+  try {
+    mkdirSync(dirname(next), { recursive: true })
+    writeFileSync(next, readFileSync(previous))
+  } catch (error) {
+    console.error('[settings] migrate failed', error)
+  }
 }
 
 function flushSettings(): void {
@@ -42,6 +69,7 @@ function queueSettings(settings: TimerSettings): void {
 }
 
 function loadSettings(): unknown {
+  migrateSettings()
   try {
     return JSON.parse(readFileSync(settingsPath(), 'utf8')) as unknown
   } catch {
@@ -84,16 +112,38 @@ function bindEmergencyEscape(window: BrowserWindow): void {
   })
 }
 
+function applyControlLayout(mode: ControlLayout, animate = true): void {
+  const window = controlWindow
+  if (!window || window.isDestroyed()) return
+  const target = mode === 'compact' ? COMPACT_WINDOW : EXPANDED_WINDOW
+  window.setMinimumSize(COMPACT_WINDOW.minWidth, COMPACT_WINDOW.minHeight)
+  const area = screen.getDisplayMatching(window.getBounds()).workArea
+  const current = window.getBounds()
+  const width = Math.min(target.width, area.width)
+  const height = Math.min(target.height, area.height)
+  let x = current.x
+  let y = current.y
+  if (x + width > area.x + area.width) x = area.x + area.width - width
+  if (y + height > area.y + area.height) y = area.y + area.height - height
+  window.setBounds({
+    x: Math.max(area.x, Math.round(x)),
+    y: Math.max(area.y, Math.round(y)),
+    width,
+    height
+  }, animate)
+  window.setMinimumSize(Math.min(target.minWidth, width), Math.min(target.minHeight, height))
+}
+
 function createControlWindow(): void {
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
-    minWidth: 1040,
-    minHeight: 700,
+    width: COMPACT_WINDOW.width,
+    height: COMPACT_WINDOW.height,
+    minWidth: COMPACT_WINDOW.minWidth,
+    minHeight: COMPACT_WINDOW.minHeight,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#0b1110',
-    title: 'Таймер+',
+    title: 'EventTimer',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -104,7 +154,10 @@ function createControlWindow(): void {
   })
   controlWindow = window
   bindEmergencyEscape(window)
-  window.once('ready-to-show', () => window.show())
+  window.once('ready-to-show', () => {
+    applyControlLayout('compact', false)
+    window.show()
+  })
   window.on('closed', () => {
     controlWindow = null
     closeAllOutputs()
@@ -129,7 +182,7 @@ function createOutputWindow(displayId: number): BrowserWindow | null {
     alwaysOnTop: true,
     skipTaskbar: true,
     backgroundColor: '#000000',
-    title: `Таймер+ — ${display.label || displayId}`,
+    title: `EventTimer — ${display.label || displayId}`,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -197,6 +250,11 @@ function sendDisplayList(): void {
 }
 
 function registerIpc(): void {
+  ipcMain.handle('window:layout', (event, mode: unknown) => {
+    if (!controlWindow || event.sender !== controlWindow.webContents) return
+    if (mode !== 'compact' && mode !== 'expanded') return
+    applyControlLayout(mode)
+  })
   ipcMain.handle('displays:list', () => displayList())
   ipcMain.handle('settings:load', () => loadSettings())
   ipcMain.on('settings:save', (_event, settings: TimerSettings) => queueSettings(settings))

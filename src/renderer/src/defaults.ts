@@ -12,6 +12,11 @@ export const DEFAULT_TIMER: TimerState = {
   endTime: '16:00',
   costPerMinute: 0,
   overtimeCostTotal: 0,
+  overtimeElapsed: 0,
+  overtimeIntervalSeconds: 1,
+  scheduleOvertime: true,
+  remainingLabel: 'До завершения',
+  costLabel: 'Итого',
   backgroundMode: 'gradient',
   backgroundColor: '#18c56e',
   backgroundGradientColor: '#19b9d1',
@@ -92,6 +97,13 @@ export function normalizeSettings(raw: unknown): TimerSettings {
       endTime: clockTime(timerRaw.endTime, DEFAULT_TIMER.endTime),
       costPerMinute: number(timerRaw.costPerMinute, 0, 0, 1_000_000_000),
       overtimeCostTotal: number(timerRaw.overtimeCostTotal, 0, 0, 1_000_000_000_000),
+      overtimeElapsed: 0,
+      overtimeIntervalSeconds: Math.round(number(timerRaw.overtimeIntervalSeconds, 1, 1, 3600)),
+      scheduleOvertime: typeof timerRaw.scheduleOvertime === 'boolean'
+        ? timerRaw.scheduleOvertime
+        : DEFAULT_TIMER.scheduleOvertime,
+      remainingLabel: string(timerRaw.remainingLabel, DEFAULT_TIMER.remainingLabel, 40),
+      costLabel: string(timerRaw.costLabel, DEFAULT_TIMER.costLabel, 40),
       backgroundMode: timerRaw.backgroundMode === 'solid' ? 'solid' : 'gradient',
       backgroundColor: color(timerRaw.backgroundColor, DEFAULT_TIMER.backgroundColor),
       backgroundGradientColor: color(

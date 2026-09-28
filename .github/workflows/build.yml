@@ -1,4 +1,4 @@
-name: Build Timer Plus
+name: Build EventTimer
 
 permissions:
   contents: write
@@ -26,7 +26,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $installer = Get-Item -LiteralPath 'dist\Timer-Plus-1.0.0-win-x64.exe'
+          $installer = Get-Item -LiteralPath 'dist\EventTimer-1.0.0-win-x64.exe'
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content -Encoding utf8 -LiteralPath 'dist\SHA256SUMS-windows.txt'
           gh release upload v1.0.0 $installer.FullName 'dist\SHA256SUMS-windows.txt' --clobber --repo $env:GITHUB_REPOSITORY

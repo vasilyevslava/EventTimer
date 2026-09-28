@@ -36,13 +36,14 @@ export function EventTimerScene({ timer, output = false }: { timer: TimerState; 
     : formatTimer(centralSeconds ?? 0)
   const scheduledRemaining = secondsUntilTime(now, timer.endTime)
   const formattedCost = Math.max(0, timer.overtimeCostTotal).toLocaleString('ru-RU', {
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2
   })
+  const remainingLabel = (timer.remainingLabel ?? 'До завершения').trim()
+  const costLabel = (timer.costLabel ?? 'Итого').trim()
   const background = timer.backgroundMode === 'gradient'
     ? `linear-gradient(${timer.backgroundGradientAngle}deg, ${timer.backgroundColor}, ${timer.backgroundGradientColor})`
     : timer.backgroundColor
-
   return (
     <div
       className={`timer-scene ${output ? 'timer-scene-output' : ''}`}
@@ -72,11 +73,17 @@ export function EventTimerScene({ timer, output = false }: { timer: TimerState; 
       </div>
 
       {timer.visibility.remaining && (
-        <div className="scene-remaining">До завершения: {formatTimer(scheduledRemaining)}</div>
+        <div className="scene-remaining">
+          {remainingLabel && <span>{remainingLabel}:</span>}
+          <span className="scene-remaining-value">{formatTimer(scheduledRemaining)}</span>
+        </div>
       )}
 
       {timer.visibility.cost && (
-        <div className={`scene-cost ${overtime ? 'overtime' : ''}`}>Итого: {formattedCost}₽</div>
+        <div className={`scene-cost ${overtime ? 'overtime' : ''}`}>
+          {costLabel && <span className="scene-cost-label">{costLabel}:</span>}
+          <span className="scene-cost-value">{formattedCost}₽</span>
+        </div>
       )}
     </div>
   )

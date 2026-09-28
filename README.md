@@ -1,10 +1,10 @@
-# Таймер+
+# EventTimer
 
 Самостоятельное приложение таймера мероприятия для Windows и macOS. Оно создано отдельно от Presentation Display Manager, не требует установленного PDM и может выводить одну сцену сразу на несколько экранов.
 
 Версия: **1.0.0** · Electron **43.3.0** · Windows 10/11 x64 · macOS Intel / Apple Silicon
 
-**[Скачать готовые дистрибутивы для Windows и macOS](https://github.com/mirslava88/timer-plus/releases/latest)**
+**[Скачать готовые дистрибутивы для Windows и macOS](https://github.com/mirslava88/EventTimer/releases/latest)**
 
 ## Возможности
 
@@ -27,15 +27,15 @@
 
 ### Windows
 
-1. Скачайте `Timer-Plus-1.0.0-win-x64.exe` из раздела [Releases](https://github.com/mirslava88/timer-plus/releases/latest) или запустите локальный файл из папки `dist`.
+1. Скачайте `EventTimer-1.0.0-win-x64.exe` из раздела [Releases](https://github.com/mirslava88/EventTimer/releases/latest) или запустите локальный файл из папки `dist`.
 2. Выберите папку установки и завершите работу мастера.
-3. Откройте **Таймер+** через ярлык на рабочем столе или меню «Пуск».
+3. Откройте **EventTimer** через ярлык на рабочем столе или меню «Пуск».
 
 Установщик пока не подписан коммерческим сертификатом. Windows SmartScreen может показать предупреждение «Неизвестный издатель».
 
 ### macOS
 
-Для Intel x64 и Apple Silicon arm64 опубликованы отдельные `.dmg` и `.zip` в разделе [Releases](https://github.com/mirslava88/timer-plus/releases/latest). Их также можно собрать локально командой `npm run package:mac` либо через включённый GitHub Actions workflow. Сборки имеют ad-hoc подпись с необходимыми Electron JIT-entitlements, но не нотариализованы Apple. Для распространения без системных предупреждений потребуются Apple Developer ID и notarization.
+Для Intel x64 и Apple Silicon arm64 опубликованы отдельные `.dmg` и `.zip` в разделе [Releases](https://github.com/mirslava88/EventTimer/releases/latest). Их также можно собрать локально командой `npm run package:mac` либо через включённый GitHub Actions workflow. Сборки имеют ad-hoc подпись с необходимыми Electron JIT-entitlements, но не нотариализованы Apple. Для распространения без системных предупреждений потребуются Apple Developer ID и notarization.
 
 ## Запуск из исходного кода
 
@@ -84,7 +84,7 @@ npm run package:mac
 
 ## Данные
 
-Настройки хранятся в стандартной пользовательской папке Electron под именем `timer-plus-settings.json`. Фоновое изображение сохраняется внутри конфигурации, поэтому оно не пропадёт после перемещения исходного файла.
+Настройки хранятся в стандартной пользовательской папке Electron под именем `event-timer-settings.json`. Фоновое изображение сохраняется внутри конфигурации, поэтому оно не пропадёт после перемещения исходного файла.
 
 При закрытии и повторном запуске сохраняются оформление, заголовки, время, накопленная стоимость перелимита и выбранные дисплеи. Состояния **«В эфире»**, **«Запущен»** и **LIVE** всегда сбрасываются для защиты от самопроизвольного запуска.
 

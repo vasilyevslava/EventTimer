@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DisplayInfo, TimerPlusApi, TimerSettings, TimerState } from '../shared'
+import type { ControlLayout, DisplayInfo, TimerPlusApi, TimerSettings, TimerState } from '../shared'
 
 const api: TimerPlusApi = {
   listDisplays: () => ipcRenderer.invoke('displays:list') as Promise<DisplayInfo[]>,
+  setLayout: (layout: ControlLayout) => ipcRenderer.invoke('window:layout', layout) as Promise<void>,
   onDisplaysChanged: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, displays: DisplayInfo[]): void => callback(displays)
     ipcRenderer.on('displays-changed', listener)

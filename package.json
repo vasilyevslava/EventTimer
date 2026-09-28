@@ -1,5 +1,5 @@
 {
-  "name": "timer-plus",
+  "name": "event-timer",
   "version": "1.0.0",
   "description": "Standalone event timer for Windows and macOS",
   "author": "mirslava88",
@@ -33,8 +33,8 @@
   },
   "build": {
     "appId": "com.mirslava.timerplus",
-    "productName": "Таймер+",
-    "artifactName": "Timer-Plus-${version}-${os}-${arch}.${ext}",
+    "productName": "EventTimer",
+    "artifactName": "EventTimer-${version}-${os}-${arch}.${ext}",
     "asar": true,
     "directories": {
       "output": "dist"
@@ -61,12 +61,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Таймер+"
+      "shortcutName": "EventTimer"
     },
     "mac": {
       "icon": "resources/icon.png",
       "category": "public.app-category.productivity",
-      "executableName": "Timer Plus",
+      "executableName": "EventTimer",
       "identity": "-",
       "hardenedRuntime": true,
       "entitlements": "build/entitlements.mac.plist",

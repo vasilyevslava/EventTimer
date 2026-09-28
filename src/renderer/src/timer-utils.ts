@@ -10,15 +10,21 @@ export function formatTimer(totalSeconds: number): string {
   return `${negative ? '−' : ''}${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
 }
 
-export function nextTimerTick(timer: TimerState): TimerState {
-  const remaining = timer.remaining - 1
-  const overtimeIncrement = remaining < 0 && timer.costPerMinute > 0
-    ? timer.costPerMinute / 60
-    : 0
+export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolean): TimerState {
+  const interval = Math.min(3600, Math.max(1, Math.trunc(timer.overtimeIntervalSeconds) || 1))
+  const remaining = tickCountdown ? timer.remaining - 1 : timer.remaining
+  const perSecond = timer.costPerMinute > 0 ? timer.costPerMinute / 60 : 0
+  const scheduleActive = timer.scheduleOvertime && secondsUntilTime(now, timer.endTime) < 0 && perSecond > 0
+  const timerActive = !scheduleActive && tickCountdown && remaining < 0 && perSecond > 0
+  const active = scheduleActive || timerActive
+  if (!tickCountdown && !active) return timer
+  const elapsed = active ? (timer.overtimeElapsed || 0) + 1 : 0
+  const charge = active && elapsed >= interval
   return {
     ...timer,
     remaining,
-    overtimeCostTotal: Math.max(0, timer.overtimeCostTotal + overtimeIncrement)
+    overtimeElapsed: charge ? 0 : elapsed,
+    overtimeCostTotal: Math.max(0, timer.overtimeCostTotal + (charge ? perSecond * interval : 0))
   }
 }
 

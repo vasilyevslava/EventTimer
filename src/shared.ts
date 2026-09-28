@@ -17,6 +17,11 @@ export interface TimerState {
   endTime: string
   costPerMinute: number
   overtimeCostTotal: number
+  overtimeElapsed: number
+  overtimeIntervalSeconds: number
+  scheduleOvertime: boolean
+  remainingLabel: string
+  costLabel: string
   backgroundMode: 'solid' | 'gradient'
   backgroundColor: string
   backgroundGradientColor: string
@@ -45,8 +50,11 @@ export interface TimerSettings {
   selectedDisplayIds: number[]
 }
 
+export type ControlLayout = 'compact' | 'expanded'
+
 export interface TimerPlusApi {
   listDisplays: () => Promise<DisplayInfo[]>
+  setLayout: (layout: ControlLayout) => Promise<void>
   onDisplaysChanged: (callback: (displays: DisplayInfo[]) => void) => () => void
   selectBackground: () => Promise<string | null>
   loadSettings: () => Promise<unknown>

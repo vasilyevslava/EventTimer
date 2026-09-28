@@ -5,6 +5,13 @@
   font-weight: 300;
   font-display: block;
 }
+@font-face {
+  font-family: 'SB Sans Display';
+  src: url('./assets/fonts/SBSansDisplay-Light.otf') format('opentype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
 
 :root {
   font-family: 'SB Sans Display', sans-serif;
@@ -104,7 +111,8 @@ button:disabled {
   color: #06110d;
   background: linear-gradient(135deg, #25dd89, #18acd0);
   font-weight: 300;
-  font-size: 18px;
+  font-size: 15px;
+  letter-spacing: -.03em;
   box-shadow: 0 8px 24px rgba(20, 199, 122, .2);
 }
 
@@ -393,6 +401,23 @@ input[type="time"] {
 
 .background-bar > button:hover {
   border-color: #53615b;
+}
+
+.schedule-toggle {
+  flex: 0 0 auto;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #33403b;
+  border-radius: 9px;
+  color: #9aa8a2;
+  background: #101815;
+  font-size: 11px;
+}
+
+.schedule-toggle.active {
+  border-color: #1fbf76;
+  color: #fff;
+  background: #18a865;
 }
 
 .color-field {
@@ -706,7 +731,7 @@ input[type="time"] {
   left: 2.2cqw;
   top: 2.7cqh;
   font-size: min(5.2cqw, 9.3cqh);
-  font-weight: 300;
+  font-weight: inherit;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
@@ -716,7 +741,7 @@ input[type="time"] {
   right: 2.2cqw;
   top: 2.5cqh;
   font-size: min(2.65cqw, 5.2cqh);
-  font-weight: 300;
+  font-weight: inherit;
   font-variant-numeric: tabular-nums;
   line-height: 1.18;
   text-align: right;
@@ -736,7 +761,7 @@ input[type="time"] {
   width: 78cqw;
   transform: translate(-50%, -50%);
   font-size: min(3.3cqw, 6.4cqh);
-  font-weight: 300;
+  font-weight: inherit;
   line-height: 1;
 }
 
@@ -748,7 +773,7 @@ input[type="time"] {
   transform: translate(-50%, -50%);
   white-space: nowrap;
   font-size: min(14.1cqw, 26.5cqh);
-  font-weight: 300;
+  font-weight: inherit;
   font-variant-numeric: tabular-nums;
   letter-spacing: -.04em;
   line-height: .9;
@@ -774,7 +799,7 @@ input[type="time"] {
   white-space: nowrap;
   text-overflow: ellipsis;
   font-size: min(3.05cqw, 5.9cqh);
-  font-weight: 300;
+  font-weight: inherit;
   line-height: 1;
   /*
    * SB Sans can paint a few pixels above its line box at fractional Windows
@@ -789,15 +814,30 @@ input[type="time"] {
 .scene-remaining,
 .scene-cost {
   position: absolute;
-  bottom: 3.7cqh;
+  bottom: 4.2cqh;
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+  font-weight: inherit;
+  font-variant-numeric: tabular-nums lining-nums;
   font-size: min(2.55cqw, 4.8cqh);
-  font-weight: 300;
-  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
   line-height: 1;
+  white-space: nowrap;
 }
 
-.scene-remaining { left: 2.2cqw; }
-.scene-cost { right: 2.2cqw; }
+.scene-remaining { left: 3.2cqw; }
+
+.scene-cost {
+  right: 3.2cqw;
+  justify-content: flex-end;
+}
+
+.scene-remaining-value,
+.scene-cost-value {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+}
 
 .output-root {
   width: 100%;
@@ -816,4 +856,61 @@ input[type="time"] {
   .form-grid { gap: 6px 9px; }
   .preview-frame { min-height: 190px; }
   .time-editor { min-height: 64px; }
+}
+
+.header-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layout-toggle {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #2f6b4d;
+  border-radius: 999px;
+  color: #e7fff3;
+  background: rgba(18, 110, 68, .28);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.layout-toggle:hover {
+  border-color: #3dde8f;
+  background: rgba(24, 150, 90, .4);
+}
+
+.compact-app .app-header {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  min-height: 56px;
+  gap: 10px;
+}
+
+.compact-app .brand {
+  min-width: 0;
+}
+
+.compact-body {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  overflow: auto;
+}
+
+.compact-app .timer-panel {
+  flex: 0 0 auto;
+}
+
+.compact-app .time-editor {
+  min-height: 64px;
+  font-size: 40px;
+}
+
+.compact-app .adjust-grid button {
+  padding: 7px 1px;
+  font-size: 11px;
+  white-space: nowrap;
 }

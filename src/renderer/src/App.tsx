@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type {
   DisplayInfo,
@@ -10,7 +10,7 @@ import type {
 import { DEFAULT_TIMER, defaultHeading, normalizeSettings } from './defaults'
 import { EventTimerScene } from './EventTimerScene'
 import {
-  nextTimerTick,
+  advanceTimer,
   normalizeTimePart,
   secondsFromTimeParts,
   timePartsFromSeconds
@@ -43,6 +43,10 @@ function cloneTimer(timer: TimerState): TimerState {
   }
 }
 
+function clampInterval(value: number): number {
+  return Math.min(3600, Math.max(1, Math.round(value)))
+}
+
 function displayName(display: DisplayInfo, index: number): string {
   const suffix = `${display.width}×${display.height}`
   if (display.isPrimary) return `Дисплей ${index} · основной · ${suffix}`
@@ -61,6 +65,8 @@ export function TimerControl(): JSX.Element {
   const [editingTime, setEditingTime] = useState(false)
   const [timePartsDirty, setTimePartsDirty] = useState(false)
   const [timeParts, setTimeParts] = useState<TimeParts>(() => timePartsFromSeconds(DEFAULT_TIMER.remaining))
+  const [expanded, setExpanded] = useState(false)
+  const savedPayload = useRef('')
 
   const isLive = liveTimer !== null
 
@@ -108,20 +114,26 @@ export function TimerControl(): JSX.Element {
   useEffect(() => {
     if (!ready) return
     const settings: TimerSettings = {
-      timer: { ...cloneTimer(timer), running: false, live: false },
+      timer: { ...cloneTimer(timer), running: false, live: false, overtimeElapsed: 0 },
       selectedDisplayIds
     }
+    const key = JSON.stringify(settings)
+    if (key === savedPayload.current) return
+    savedPayload.current = key
     window.timerPlus.saveSettings(settings)
   }, [ready, selectedDisplayIds, timer])
 
   useEffect(() => {
-    if (!timer.running && !liveTimer?.running) return
+    const countdown = timer.running || Boolean(liveTimer?.running)
+    const schedule = Boolean(timer.scheduleOvertime || liveTimer?.scheduleOvertime)
+    if (!countdown && !schedule) return
     const interval = window.setInterval(() => {
-      setTimer((current) => current.running ? nextTimerTick(current) : current)
-      setLiveTimer((current) => current?.running ? nextTimerTick(current) : current)
+      const now = new Date()
+      setTimer((current) => advanceTimer(current, now, current.running))
+      setLiveTimer((current) => current ? advanceTimer(current, now, current.running) : current)
     }, 1000)
     return () => window.clearInterval(interval)
-  }, [timer.running, liveTimer?.running])
+  }, [timer.running, timer.scheduleOvertime, liveTimer?.running, liveTimer?.scheduleOvertime])
 
   useEffect(() => {
     if (liveTimer) window.timerPlus.updateLive(liveTimer)
@@ -236,17 +248,114 @@ export function TimerControl(): JSX.Element {
     name: displayName(display, index)
   })), [displays])
 
+  const toggleLayout = (): void => {
+    const next = !expanded
+    setExpanded(next)
+    void window.timerPlus.setLayout(next ? 'expanded' : 'compact')
+  }
+
+  const timerPanel = (
+    <section className="panel timer-panel">
+      <h2>Управление таймером</h2>
+      <div className={`time-editor ${timer.remaining < 0 ? 'negative' : ''}`}>
+        {timer.remaining < 0 && <span>−</span>}
+        {(['hours', 'minutes', 'seconds'] as TimePart[]).map((part, index) => (
+          <div className="time-part" key={part}>
+            {index > 0 && <b>:</b>}
+            <input
+              aria-label={part === 'hours' ? 'Часы' : part === 'minutes' ? 'Минуты' : 'Секунды'}
+              inputMode="numeric"
+              maxLength={2}
+              value={timeParts[part]}
+              onFocus={(event) => {
+                setEditingTime(true)
+                setTimePartsDirty(false)
+                event.currentTarget.select()
+              }}
+              onChange={(event) => {
+                if (!timePartsDirty && timer.running) updateTimerControl({ running: false })
+                setTimePartsDirty(true)
+                setTimeParts((current) => ({ ...current, [part]: normalizeTimePart(part, event.target.value) }))
+              }}
+              onBlur={commitTime}
+              onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
+            />
+          </div>
+        ))}
+      </div>
+      <div className="time-hint">Нажмите отдельно на часы, минуты или секунды</div>
+      <div className="transport">
+        <button className="pause" title="Пауза" onClick={() => updateTimerControl({ running: false })}>Ⅱ</button>
+        <button className="play" title="Старт" onClick={() => updateTimerControl({ running: true })}>▶</button>
+        <button className="stop" title="Стоп и сброс" onClick={() => updateTimerControl({ running: false, remaining: timer.duration })}>■</button>
+        <button
+          disabled={!isLive}
+          className={`live-control ${liveControl ? 'active' : ''}`}
+          title={isLive ? 'Применять команды управления временем к эфиру немедленно' : 'Сначала отправьте таймер в эфир'}
+          onClick={() => setLiveControl((value) => !value)}
+        >⚡ LIVE</button>
+      </div>
+      <div className="adjust-grid">
+        {[-10, -5, -1, 0, 1, 5, 10].map((minutes) => (
+          <button
+            key={minutes}
+            disabled={minutes === 0 && !liveTimer}
+            className={minutes < 0 ? 'minus' : minutes > 0 ? 'plus' : 'now'}
+            onClick={() => minutes === 0 ? restoreTimerFromLive() : adjustMinutes(minutes)}
+            title={minutes === 0
+              ? liveTimer
+                ? 'Вернуть в превью время и состояние таймера, которые сейчас идут в эфире'
+                : 'Сначала отправьте таймер в эфир'
+              : undefined}
+          >{minutes === 0 ? 'Сейчас' : `${minutes > 0 ? '+' : ''}${minutes} мин`}</button>
+        ))}
+      </div>
+      {!isLive ? (
+        <button className="primary-action" onClick={() => void publish()}>Отправить в эфир</button>
+      ) : (
+        <div className="live-actions">
+          <button className="update-action" disabled={!dirty} onClick={() => void updateOutput()}>{dirty ? 'Обновить эфир' : 'Эфир обновлён'}</button>
+          <button className="remove-action" onClick={() => void stopOutput()}>Убрать из эфира</button>
+        </div>
+      )}
+    </section>
+  )
+
   if (!ready) {
-    return <div className="loading"><div className="spinner" /><div>Таймер+ запускается…</div></div>
+    return <div className="loading"><div className="spinner" /><div>EventTimer запускается…</div></div>
+  }
+
+  if (!expanded) {
+    return (
+      <main className="control-app compact-app" data-layout="compact">
+        <header className="app-header">
+          <div className="brand">
+            <div className="brand-icon">ET</div>
+            <div>
+              <h1>EventTimer</h1>
+              <p>Управление</p>
+            </div>
+          </div>
+          <button className="layout-toggle" onClick={toggleLayout}>Развернуть</button>
+          <div className={`live-badge ${isLive ? 'on' : ''}`}>
+            <span />{isLive ? 'В ЭФИРЕ' : 'НЕ В ЭФИРЕ'}
+          </div>
+        </header>
+        <div className="compact-body">
+          {timerPanel}
+          <div className="status-line" title={status}>{status}</div>
+        </div>
+      </main>
+    )
   }
 
   return (
-    <main className="control-app">
+    <main className="control-app" data-layout="expanded">
       <header className="app-header">
         <div className="brand">
-          <div className="brand-icon">T+</div>
+          <div className="brand-icon">ET</div>
           <div>
-            <h1>Таймер+</h1>
+            <h1>EventTimer</h1>
             <p>Самостоятельный таймер мероприятия</p>
           </div>
         </div>
@@ -277,8 +386,11 @@ export function TimerControl(): JSX.Element {
             })}
           </div>
         </div>
-        <div className={`live-badge ${isLive ? 'on' : ''}`}>
-          <span />{isLive ? 'В ЭФИРЕ' : 'НЕ В ЭФИРЕ'}
+        <div className="header-side">
+          <button className="layout-toggle" onClick={toggleLayout}>Свернуть</button>
+          <div className={`live-badge ${isLive ? 'on' : ''}`}>
+            <span />{isLive ? 'В ЭФИРЕ' : 'НЕ В ЭФИРЕ'}
+          </div>
         </div>
       </header>
 
@@ -325,6 +437,24 @@ export function TimerControl(): JSX.Element {
               />
             </label>
             <label>
+              <span>Текст конца мероприятия</span>
+              <input
+                value={timer.remainingLabel ?? 'До завершения'}
+                maxLength={40}
+                placeholder="До завершения"
+                onChange={(event) => updateDraft({ remainingLabel: event.target.value })}
+              />
+            </label>
+            <label>
+              <span>Текст стоимости</span>
+              <input
+                value={timer.costLabel ?? 'Итого'}
+                maxLength={40}
+                placeholder="Итого"
+                onChange={(event) => updateDraft({ costLabel: event.target.value })}
+              />
+            </label>
+            <label>
               <span>Расчёт стоимости перелимита</span>
               <div className="cost-row">
                 <div className="unit-input">
@@ -339,6 +469,39 @@ export function TimerControl(): JSX.Element {
                   <span>₽ / мин</span>
                 </div>
                 <button className="danger-ghost" onClick={() => updateDraft({ overtimeCostTotal: 0 })}>Сбросить итог</button>
+                <button
+                  className={`schedule-toggle ${timer.scheduleOvertime ? 'active' : ''}`}
+                  title="Когда включено, после времени конца мероприятия стоимость копится каждую секунду"
+                  onClick={() => {
+                    const scheduleOvertime = !timer.scheduleOvertime
+                    setTimer((current) => ({ ...current, scheduleOvertime, overtimeElapsed: 0 }))
+                    if (isLive) setLiveTimer((current) => current ? { ...current, scheduleOvertime, overtimeElapsed: 0 } : current)
+                  }}
+                >По времени мероприятия</button>
+              </div>
+            </label>
+            <label>
+              <span>Частота обновления перелимита</span>
+              <div className="unit-input">
+                <input
+                  type="number"
+                  min={1}
+                  max={3600}
+                  step={1}
+                  value={timer.overtimeIntervalSeconds || 1}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value)
+                    if (!Number.isFinite(parsed)) return
+                    const overtimeIntervalSeconds = clampInterval(parsed)
+                    setTimer((current) => ({ ...current, overtimeIntervalSeconds, overtimeElapsed: 0 }))
+                    if (isLive) {
+                      setLiveTimer((current) => current
+                        ? { ...current, overtimeIntervalSeconds, overtimeElapsed: 0 }
+                        : current)
+                    }
+                  }}
+                />
+                <span>сек</span>
               </div>
             </label>
           </div>
@@ -389,71 +552,7 @@ export function TimerControl(): JSX.Element {
             </div>
           </section>
 
-          <section className="panel timer-panel">
-            <h2>Управление таймером</h2>
-            <div className={`time-editor ${timer.remaining < 0 ? 'negative' : ''}`}>
-              {timer.remaining < 0 && <span>−</span>}
-              {(['hours', 'minutes', 'seconds'] as TimePart[]).map((part, index) => (
-                <div className="time-part" key={part}>
-                  {index > 0 && <b>:</b>}
-                  <input
-                    aria-label={part === 'hours' ? 'Часы' : part === 'minutes' ? 'Минуты' : 'Секунды'}
-                    inputMode="numeric"
-                    maxLength={2}
-                    value={timeParts[part]}
-                    onFocus={(event) => {
-                      setEditingTime(true)
-                      setTimePartsDirty(false)
-                      event.currentTarget.select()
-                    }}
-                    onChange={(event) => {
-                      if (!timePartsDirty && timer.running) updateTimerControl({ running: false })
-                      setTimePartsDirty(true)
-                      setTimeParts((current) => ({ ...current, [part]: normalizeTimePart(part, event.target.value) }))
-                    }}
-                    onBlur={commitTime}
-                    onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur() }}
-                  />
-                </div>
-              ))}
-            </div>
-            <div className="time-hint">Нажмите отдельно на часы, минуты или секунды</div>
-            <div className="transport">
-              <button className="pause" title="Пауза" onClick={() => updateTimerControl({ running: false })}>Ⅱ</button>
-              <button className="play" title="Старт" onClick={() => updateTimerControl({ running: true })}>▶</button>
-              <button className="stop" title="Стоп и сброс" onClick={() => updateTimerControl({ running: false, remaining: timer.duration })}>■</button>
-              <button
-                disabled={!isLive}
-                className={`live-control ${liveControl ? 'active' : ''}`}
-                title={isLive ? 'Применять команды управления временем к эфиру немедленно' : 'Сначала отправьте таймер в эфир'}
-                onClick={() => setLiveControl((value) => !value)}
-              >⚡ LIVE</button>
-            </div>
-            <div className="adjust-grid">
-              {[-10, -5, -1, 0, 1, 5, 10].map((minutes) => (
-                <button
-                  key={minutes}
-                  disabled={minutes === 0 && !liveTimer}
-                  className={minutes < 0 ? 'minus' : minutes > 0 ? 'plus' : 'now'}
-                  onClick={() => minutes === 0 ? restoreTimerFromLive() : adjustMinutes(minutes)}
-                  title={minutes === 0
-                    ? liveTimer
-                      ? 'Вернуть в превью время и состояние таймера, которые сейчас идут в эфире'
-                      : 'Сначала отправьте таймер в эфир'
-                    : undefined}
-                >{minutes === 0 ? 'Сейчас' : `${minutes > 0 ? '+' : ''}${minutes} мин`}</button>
-              ))}
-            </div>
-
-            {!isLive ? (
-              <button className="primary-action" onClick={() => void publish()}>Отправить в эфир</button>
-            ) : (
-              <div className="live-actions">
-                <button className="update-action" disabled={!dirty} onClick={() => void updateOutput()}>{dirty ? 'Обновить эфир' : 'Эфир обновлён'}</button>
-                <button className="remove-action" onClick={() => void stopOutput()}>Убрать из эфира</button>
-              </div>
-            )}
-          </section>
+          {timerPanel}
 
           <div className="status-line" title={status}>{status}</div>
         </aside>
