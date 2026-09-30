@@ -68,9 +68,47 @@ export interface DisplayInfo {
   scaleFactor: number
 }
 
+export interface ScreenConfig {
+  eventName: string
+  headings: TimerHeadings
+  startTime: string
+  endTime: string
+  scheduleCostPerMinute: number
+  timerCostPerMinute: number
+  overtimeIntervalSeconds: number
+  overtimeMode: OvertimeMode
+  remainingLabel: string
+  costLabel: string
+  backgroundMode: 'solid' | 'gradient'
+  backgroundColor: string
+  backgroundGradientColor: string
+  backgroundGradientAngle: number
+  fontColor: string
+  allowNegative: CountdownFlags
+  warning: CountdownFlags
+  warningColor: string
+  overtimeColor: string
+  warningSoundFile: string | null
+  warningSoundLabel: string | null
+  finishSoundFile: string | null
+  finishSoundLabel: string | null
+  textStyles: SceneTextStyles
+  backgroundImage: string | null
+  centralTimeMode: TimerCentralMode
+  visibility: TimerVisibility
+}
+
+export interface ScreenPreset {
+  name: string
+  config: ScreenConfig | null
+}
+
+export const PRESET_SLOT_COUNT = 5
+
 export interface TimerSettings {
   timer: TimerState
   selectedDisplayIds: number[]
+  presets: ScreenPreset[]
 }
 
 export type ControlLayout = 'compact' | 'expanded'

@@ -1,0 +1,27 @@
+appId: com.mirslava.timerplus
+productName: EventTimer
+artifactName: EventTimer-${version}-Windows.${ext}
+asar: true
+
+directories:
+  output: dist
+
+files:
+  - out/**/*
+  - "!**/*.map"
+
+win:
+  icon: resources/icon.png
+  target:
+    - target: nsis
+      arch:
+        - x64
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: EventTimer

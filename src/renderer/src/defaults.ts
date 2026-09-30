@@ -1,4 +1,5 @@
-import type { CountdownFlags, CountdownMode, OvertimeMode, SceneTextStyle, SceneTextStyles, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
+import { PRESET_SLOT_COUNT } from '../../shared'
+import type { CountdownFlags, CountdownMode, OvertimeMode, SceneTextStyle, SceneTextStyles, ScreenConfig, ScreenPreset, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
 
 export const DEFAULT_TIMER: TimerState = {
   eventName: 'Оперативное совещание',
@@ -133,7 +134,6 @@ function clockTime(value: unknown, fallback: string): string {
 export function normalizeSettings(raw: unknown): TimerSettings {
   const source = record(raw)
   const timerRaw = record(source.timer)
-  const headingsRaw = record(timerRaw.headings)
   const visibilityRaw = record(timerRaw.visibility)
   const centralTimeMode = modes.includes(timerRaw.centralTimeMode as TimerCentralMode)
     ? timerRaw.centralTimeMode as TimerCentralMode
@@ -144,7 +144,6 @@ export function normalizeSettings(raw: unknown): TimerSettings {
   }
 
   const duration = Math.trunc(number(timerRaw.duration, DEFAULT_TIMER.duration, 0, 99 * 3600 + 3599))
-  const legacyCost = number(timerRaw.costPerMinute, 0, 0, 1_000_000_000)
   const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both']
   const overtimeMode = overtimeModes.includes(timerRaw.overtimeMode as OvertimeMode)
     ? timerRaw.overtimeMode as OvertimeMode
@@ -158,7 +157,22 @@ export function normalizeSettings(raw: unknown): TimerSettings {
     : []
 
   return {
-    timer: {
+    timer: normalizeTimerState(timerRaw, duration, overtimeMode, centralTimeMode, visibility),
+    selectedDisplayIds,
+    presets: normalizePresets(source.presets)
+  }
+}
+
+function normalizeTimerState(
+  timerRaw: Record<string, unknown>,
+  duration: number,
+  overtimeMode: OvertimeMode,
+  centralTimeMode: TimerCentralMode,
+  visibility: TimerVisibility
+): TimerState {
+  const headingsRaw = record(timerRaw.headings)
+  const legacyCost = number(timerRaw.costPerMinute, 0, 0, 1_000_000_000)
+  return {
       eventName: string(timerRaw.eventName, DEFAULT_TIMER.eventName),
       headings: {
         current: string(headingsRaw.current, DEFAULT_TIMER.headings.current),
@@ -209,9 +223,88 @@ export function normalizeSettings(raw: unknown): TimerSettings {
       remaining: Math.trunc(number(timerRaw.remaining, duration, -7 * 24 * 3600, 7 * 24 * 3600)),
       running: false,
       live: false
-    },
-    selectedDisplayIds
   }
+}
+
+export function screenConfigFromTimer(timer: TimerState): ScreenConfig {
+  return {
+    eventName: timer.eventName,
+    headings: { ...timer.headings },
+    startTime: timer.startTime,
+    endTime: timer.endTime,
+    scheduleCostPerMinute: timer.scheduleCostPerMinute,
+    timerCostPerMinute: timer.timerCostPerMinute,
+    overtimeIntervalSeconds: timer.overtimeIntervalSeconds,
+    overtimeMode: timer.overtimeMode,
+    remainingLabel: timer.remainingLabel,
+    costLabel: timer.costLabel,
+    backgroundMode: timer.backgroundMode,
+    backgroundColor: timer.backgroundColor,
+    backgroundGradientColor: timer.backgroundGradientColor,
+    backgroundGradientAngle: timer.backgroundGradientAngle,
+    fontColor: timer.fontColor,
+    allowNegative: { ...timer.allowNegative },
+    warning: { ...timer.warning },
+    warningColor: timer.warningColor,
+    overtimeColor: timer.overtimeColor,
+    warningSoundFile: timer.warningSoundFile,
+    warningSoundLabel: timer.warningSoundLabel,
+    finishSoundFile: timer.finishSoundFile,
+    finishSoundLabel: timer.finishSoundLabel,
+    textStyles: {
+      clock: { ...timer.textStyles.clock },
+      schedule: { ...timer.textStyles.schedule },
+      heading: { ...timer.textStyles.heading },
+      time: { ...timer.textStyles.time },
+      event: { ...timer.textStyles.event },
+      remaining: { ...timer.textStyles.remaining },
+      cost: { ...timer.textStyles.cost }
+    },
+    backgroundImage: timer.backgroundImage,
+    centralTimeMode: timer.centralTimeMode,
+    visibility: { ...timer.visibility }
+  }
+}
+
+function normalizePresets(raw: unknown): ScreenPreset[] {
+  const list = Array.isArray(raw) ? raw : []
+  return Array.from({ length: PRESET_SLOT_COUNT }, (_, index) => {
+    const item = record(list[index])
+    const name = typeof item.name === 'string' ? item.name.trim().slice(0, 40) : ''
+    if (item.config == null || typeof item.config !== 'object') return { name, config: null }
+    const timer = normalizeTimerState(
+      record(item.config),
+      DEFAULT_TIMER.duration,
+      overtimeModeFrom(record(item.config)),
+      centralModeFrom(record(item.config)),
+      visibilityFrom(record(item.config))
+    )
+    return { name, config: screenConfigFromTimer(timer) }
+  })
+}
+
+function centralModeFrom(timerRaw: Record<string, unknown>): TimerCentralMode {
+  return modes.includes(timerRaw.centralTimeMode as TimerCentralMode)
+    ? timerRaw.centralTimeMode as TimerCentralMode
+    : DEFAULT_TIMER.centralTimeMode
+}
+
+function visibilityFrom(timerRaw: Record<string, unknown>): TimerVisibility {
+  const visibilityRaw = record(timerRaw.visibility)
+  const visibility = { ...DEFAULT_TIMER.visibility }
+  for (const key of visibilityKeys) {
+    if (typeof visibilityRaw[key] === 'boolean') visibility[key] = visibilityRaw[key] as boolean
+  }
+  return visibility
+}
+
+function overtimeModeFrom(timerRaw: Record<string, unknown>): OvertimeMode {
+  const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both']
+  return overtimeModes.includes(timerRaw.overtimeMode as OvertimeMode)
+    ? timerRaw.overtimeMode as OvertimeMode
+    : timerRaw.scheduleOvertime === false
+      ? 'timer'
+      : DEFAULT_TIMER.overtimeMode
 }
 
 export function defaultHeading(mode: TimerCentralMode): string {

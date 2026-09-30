@@ -30,7 +30,7 @@ export function EventTimerScene({
   output?: boolean
   textEditing?: boolean
   selectedText?: SceneTextKey | null
-  onSelectText?: (key: SceneTextKey) => void
+  onSelectText?: (key: SceneTextKey | null) => void
 }): JSX.Element {
   const [now, setNow] = useState(() => new Date())
   const frameRef = useRef<HTMLDivElement>(null)
@@ -161,9 +161,9 @@ export function EventTimerScene({
   ])
 
   const hit = (key: SceneTextKey) => (event: MouseEvent<HTMLDivElement>): void => {
-    if (!textEditing) return
+    if (!onSelectText) return
     event.stopPropagation()
-    onSelectText?.(key)
+    onSelectText(key)
   }
 
   const bind = (key: SceneTextKey) => (node: HTMLDivElement | null): void => {
@@ -181,11 +181,11 @@ export function EventTimerScene({
       }}
     >
       {timer.backgroundImage && <img className="scene-background" src={timer.backgroundImage} draggable={false} />}
-      <div className="scene-frame" ref={frameRef}>
+      <div className="scene-frame" ref={frameRef} onClick={() => onSelectText?.(null)}>
         {timer.visibility.clock && (
           <div
             ref={bind('clock')}
-            className={hitClass('clock', textEditing, selectedText, 'scene-clock')}
+            className={hitClass('clock', selectedText, 'scene-clock')}
             style={blockStyle(styles, 'clock', placement)}
             onClick={hit('clock')}
           >{currentClock(now)}</div>
@@ -194,7 +194,7 @@ export function EventTimerScene({
         {timer.visibility.schedule && (
           <div
             ref={bind('schedule')}
-            className={hitClass('schedule', textEditing, selectedText, 'scene-schedule')}
+            className={hitClass('schedule', selectedText, 'scene-schedule')}
             style={blockStyle(styles, 'schedule', placement)}
             onClick={hit('schedule')}
           >
@@ -207,14 +207,14 @@ export function EventTimerScene({
           {timer.visibility.heading && (
             <div
               ref={bind('heading')}
-              className={hitClass('heading', textEditing, selectedText, 'scene-heading')}
+              className={hitClass('heading', selectedText, 'scene-heading')}
               style={blockStyle(styles, 'heading', placement, 'heading')}
               onClick={hit('heading')}
             >{heading}</div>
           )}
           <div
             ref={bind('time')}
-            className={hitClass('time', textEditing, selectedText, `scene-time ${phase === 'normal' ? '' : `is-${phase}`}`)}
+            className={hitClass('time', selectedText, `scene-time ${phase === 'normal' ? '' : `is-${phase}`}`)}
             style={blockStyle(styles, 'time', placement, 'time')}
             onClick={hit('time')}
           >
@@ -225,7 +225,7 @@ export function EventTimerScene({
           {timer.visibility.eventName && (
             <div
               ref={bind('event')}
-              className={hitClass('event', textEditing, selectedText, 'scene-event-wrap')}
+              className={hitClass('event', selectedText, 'scene-event-wrap')}
               style={blockStyle(styles, 'event', placement, 'event')}
               onClick={hit('event')}
             >
@@ -242,7 +242,7 @@ export function EventTimerScene({
         {timer.visibility.remaining && (
           <div
             ref={bind('remaining')}
-            className={hitClass('remaining', textEditing, selectedText, 'scene-remaining')}
+            className={hitClass('remaining', selectedText, 'scene-remaining')}
             style={blockStyle(styles, 'remaining', placement)}
             onClick={hit('remaining')}
           >
@@ -254,7 +254,7 @@ export function EventTimerScene({
         {timer.visibility.cost && (
           <div
             ref={bind('cost')}
-            className={hitClass('cost', textEditing, selectedText, `scene-cost ${centralMode !== 'current' && rawCentral != null && rawCentral < 0 && timer.allowNegative[centralMode] ? 'is-overtime' : ''}`)}
+            className={hitClass('cost', selectedText, `scene-cost ${centralMode !== 'current' && rawCentral != null && rawCentral < 0 && timer.allowNegative[centralMode] ? 'is-overtime' : ''}`)}
             style={blockStyle(styles, 'cost', placement)}
             onClick={hit('cost')}
           >
@@ -267,8 +267,8 @@ export function EventTimerScene({
   )
 }
 
-function hitClass(key: SceneTextKey, editing: boolean, selected: SceneTextKey | null, extra = ''): string {
-  return ['scene-hit', extra, editing && selected === key ? 'selected' : ''].filter(Boolean).join(' ')
+function hitClass(key: SceneTextKey, selected: SceneTextKey | null, extra = ''): string {
+  return ['scene-hit', extra, selected === key ? 'selected' : ''].filter(Boolean).join(' ')
 }
 
 function blockStyle(

@@ -438,7 +438,7 @@ button:disabled {
   background: #101614;
 }
 
-.tab-bar { grid-template-columns: repeat(3, 1fr); }
+.tab-bar { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 
 .segmented.mode-grid { grid-template-columns: repeat(4, 1fr); }
 .segmented.two { grid-template-columns: 1fr 1fr; }
@@ -458,6 +458,11 @@ button:disabled {
   font-size: 14px;
 }
 
+.tab-bar button {
+  padding: 0 2px;
+  font-size: 13px;
+}
+
 .tab-bar button.active,
 .segmented button.active {
   color: #fff;
@@ -472,10 +477,54 @@ button:disabled {
 
 .event-form,
 .screen-form,
-.look-form {
+.countdown-form,
+.look-form,
+.settings-stack {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.card-title {
+  margin: 0;
+  color: #f1f7f4;
+  font-size: 15px;
+}
+
+.card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.card-toggle-meta {
+  margin-left: auto;
+  color: #8b9892;
+  font-size: 13px;
+}
+
+.card-chevron {
+  width: 8px;
+  height: 8px;
+  margin-bottom: 4px;
+  border-right: 2px solid #9aa8a2;
+  border-bottom: 2px solid #9aa8a2;
+  transform: rotate(45deg);
+}
+
+.card-chevron.is-open {
+  margin-top: 4px;
+  margin-bottom: 0;
+  transform: rotate(-135deg);
+}
+
+.settings-card.is-collapsed {
+  gap: 0;
 }
 
 label > span,
@@ -498,7 +547,10 @@ input[type="text"],
 input[type="number"],
 input[type="time"],
 .event-form input:not([type="color"]),
-.look-form input:not([type="color"]):not([type="range"]) {
+.screen-form input:not([type="color"]),
+.countdown-form input:not([type="color"]),
+.look-form input:not([type="color"]):not([type="range"]),
+.settings-stack input:not([type="color"]):not([type="range"]) {
   width: 100%;
   height: 42px;
   padding: 0 12px;
@@ -850,6 +902,10 @@ input[type="time"] {
   background: #000;
 }
 
+.scene-hit {
+  pointer-events: none;
+}
+
 .scene-editing .scene-hit {
   pointer-events: auto;
   cursor: pointer;
@@ -864,6 +920,112 @@ input[type="time"] {
 
 .preview-frame.editing {
   box-shadow: inset 0 0 0 2px #1aaa62;
+}
+
+.preset-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px auto 36px;
+  gap: 6px;
+  align-items: center;
+}
+
+.preset-slot,
+.preset-save {
+  height: 42px;
+  border: 1px solid #2c3834;
+  border-radius: 12px;
+  background: #101716;
+  font-size: 14px;
+}
+
+.preset-slot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px;
+  color: #8b9892;
+  text-align: left;
+  user-select: none;
+  touch-action: none;
+}
+
+.preset-slot b {
+  flex: 0 0 auto;
+  color: #8b9892;
+  font-weight: 400;
+}
+
+.preset-slot span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preset-slot.is-filled {
+  color: #f1f7f4;
+}
+
+.preset-slot.is-holding {
+  border-color: #1aaa62;
+  color: #fff;
+}
+
+.preset-save {
+  padding: 0 10px;
+  color: #3dde8f;
+  background: transparent;
+}
+
+.preset-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid #21c77b;
+  border-radius: 12px;
+  background: #101716;
+}
+
+.preset-name b {
+  flex: 0 0 auto;
+  color: #8b9892;
+  font-weight: 400;
+}
+
+.settings-stack .preset-name input,
+.settings-stack .preset-name input:focus {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  color: #f1f7f4;
+  background: transparent;
+  font-size: 14px;
+  box-shadow: none;
+}
+
+.preset-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 42px;
+  padding: 0;
+  border: 1px solid #2c3834;
+  border-radius: 12px;
+  color: #c5d1cc;
+  background: transparent;
+}
+
+.preset-icon.danger {
+  color: #f0a0a0;
+}
+
+.preset-icon:disabled {
+  opacity: .35;
 }
 
 .text-edit-toggle {
@@ -935,14 +1097,21 @@ input[type="time"] {
   background: #1aaa62;
 }
 
+.settings-card,
 .behavior-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #2c3834;
+  border-radius: 12px;
+  background: #101716;
 }
 
+.settings-card .section-label { margin: 0; }
+
 .behavior-block > span {
-  color: #d5e0db;
+  color: #f1f7f4;
   font-size: 14px;
 }
 
