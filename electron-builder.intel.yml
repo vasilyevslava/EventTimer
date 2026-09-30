@@ -1,0 +1,29 @@
+appId: com.mirslava.timerplus
+productName: EventTimer
+artifactName: EventTimer-${version}-Intel.${ext}
+asar: true
+
+directories:
+  output: dist
+
+files:
+  - out/**/*
+  - "!**/*.map"
+
+mac:
+  icon: resources/icon.png
+  category: public.app-category.productivity
+  executableName: EventTimer
+  identity: "-"
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    CFBundleDisplayName: EventTimer
+  target:
+    - target: dmg
+      arch:
+        - x64
+
+dmg:
+  title: EventTimer Intel

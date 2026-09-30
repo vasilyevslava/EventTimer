@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ControlLayout, DisplayInfo, TimerPlusApi, TimerSettings, TimerState } from '../shared'
+import type { ControlLayout, DisplayInfo, SoundPayload, SoundPickResult, SoundSlot, TimerPlusApi, TimerSettings, TimerState } from '../shared'
 
 const api: TimerPlusApi = {
   listDisplays: () => ipcRenderer.invoke('displays:list') as Promise<DisplayInfo[]>,
@@ -10,6 +10,9 @@ const api: TimerPlusApi = {
     return () => ipcRenderer.removeListener('displays-changed', listener)
   },
   selectBackground: () => ipcRenderer.invoke('background:select') as Promise<string | null>,
+  pickSound: (slot: SoundSlot) => ipcRenderer.invoke('sound:pick', slot) as Promise<SoundPickResult>,
+  readSound: (fileName: string) => ipcRenderer.invoke('sound:read', fileName) as Promise<SoundPayload | null>,
+  clearSound: (slot: SoundSlot) => ipcRenderer.invoke('sound:clear', slot) as Promise<void>,
   loadSettings: () => ipcRenderer.invoke('settings:load') as Promise<unknown>,
   saveSettings: (settings: TimerSettings) => ipcRenderer.send('settings:save', settings),
   goLive: (displayIds: number[], timer: TimerState) => (

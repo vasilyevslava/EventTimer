@@ -13,8 +13,11 @@
     "icon": "node scripts/generate-icon.mjs",
     "package:win": "npm run icon && electron-vite build && electron-builder --win nsis --x64 --publish never",
     "package:mac": "npm run icon && electron-vite build && electron-builder --config electron-builder.mac.yml --mac dmg zip --x64 --arm64 --publish never",
-    "package:mac:x64": "npm run icon && electron-vite build && electron-builder --config electron-builder.mac.yml --mac dmg zip --x64 --publish never",
-    "package:mac:arm64": "npm run icon && electron-vite build && electron-builder --config electron-builder.mac.yml --mac dmg zip --arm64 --publish never",
+    "package:mac:x64": "npm run icon && electron-vite build && electron-builder --config electron-builder.intel.yml --mac dmg --x64 --publish never",
+    "package:mac:intel": "npm run icon && electron-vite build && electron-builder --config electron-builder.intel.yml --mac dmg --x64 --publish never",
+    "package:mac:catalina": "npm run icon && electron-vite build && electron-builder --config electron-builder.catalina.yml --mac dmg --x64 --publish never",
+    "package:mac:arm64": "npm run icon && electron-vite build && electron-builder --config electron-builder.m.yml --mac dmg --arm64 --publish never",
+    "package:mac:m": "npm run icon && electron-vite build && electron-builder --config electron-builder.m.yml --mac dmg --arm64 --publish never",
     "package:mac:x64:dir": "npm run icon && electron-vite build && electron-builder --config electron-builder.mac.yml --mac dir --x64 --publish never"
   },
   "devDependencies": {

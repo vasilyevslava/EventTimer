@@ -1,15 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, screen } from 'electron'
 import type { OpenDialogOptions } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, extname, join } from 'node:path'
-import type { ControlLayout, DisplayInfo, TimerSettings, TimerState } from '../shared'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { basename, dirname, extname, join } from 'node:path'
+import type { ControlLayout, DisplayInfo, SoundPickResult, SoundSlot, TimerSettings, TimerState } from '../shared'
 
-const COMPACT_WINDOW = { width: 520, height: 384, minWidth: 460, minHeight: 350 }
-const EXPANDED_WINDOW = { width: 1440, height: 900, minWidth: 1040, minHeight: 700 }
+const COMPACT_WINDOW = { width: 980, height: 820, minWidth: 760, minHeight: 640 }
+const EXPANDED_WINDOW = { width: 1440, height: 900, minWidth: 1100, minHeight: 720 }
 
 // Electron 43 can crash while starting its GPU process on macOS 15 before the
 // first window is created. This timer does not need GPU acceleration, so use
 // the stable software-rendering path on macOS before Electron becomes ready.
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 if (process.platform === 'darwin') {
   app.disableHardwareAcceleration()
   app.commandLine.appendSwitch('disable-gpu')
@@ -136,10 +137,10 @@ function applyControlLayout(mode: ControlLayout, animate = true): void {
 
 function createControlWindow(): void {
   const window = new BrowserWindow({
-    width: COMPACT_WINDOW.width,
-    height: COMPACT_WINDOW.height,
-    minWidth: COMPACT_WINDOW.minWidth,
-    minHeight: COMPACT_WINDOW.minHeight,
+    width: EXPANDED_WINDOW.width,
+    height: EXPANDED_WINDOW.height,
+    minWidth: EXPANDED_WINDOW.minWidth,
+    minHeight: EXPANDED_WINDOW.minHeight,
     show: false,
     autoHideMenuBar: true,
     backgroundColor: '#0b1110',
@@ -155,7 +156,7 @@ function createControlWindow(): void {
   controlWindow = window
   bindEmergencyEscape(window)
   window.once('ready-to-show', () => {
-    applyControlLayout('compact', false)
+    applyControlLayout('expanded', false)
     window.show()
   })
   window.on('closed', () => {
@@ -249,6 +250,52 @@ function sendDisplayList(): void {
   }
 }
 
+const MAX_SOUND_BYTES = 20 * 1024 * 1024
+const SOUND_EXTENSIONS = ['mp3', 'wav', 'm4a', 'aac', 'ogg', 'aiff', 'aif', 'caf']
+
+function soundsDir(): string {
+  return join(app.getPath('userData'), 'sounds')
+}
+
+function isSoundSlot(value: unknown): value is SoundSlot {
+  return value === 'warning' || value === 'finish'
+}
+
+function soundFileName(slot: SoundSlot, extension: string): string {
+  return `${slot}${extension}`
+}
+
+function isStoredSoundName(fileName: string): boolean {
+  return /^(warning|finish)\.(mp3|wav|m4a|aac|ogg|aiff|aif|caf)$/.test(fileName)
+}
+
+function soundMime(extension: string): string {
+  switch (extension) {
+    case '.mp3': return 'audio/mpeg'
+    case '.wav': return 'audio/wav'
+    case '.m4a': return 'audio/mp4'
+    case '.aac': return 'audio/aac'
+    case '.ogg': return 'audio/ogg'
+    case '.aif':
+    case '.aiff': return 'audio/aiff'
+    default: return 'audio/x-caf'
+  }
+}
+
+function removeSlotFiles(slot: SoundSlot): void {
+  const folder = soundsDir()
+  if (!existsSync(folder)) return
+  for (const name of readdirSync(folder)) {
+    if (isStoredSoundName(name) && name.startsWith(`${slot}.`)) {
+      try {
+        unlinkSync(join(folder, name))
+      } catch (error) {
+        console.error('[sound] remove failed', error)
+      }
+    }
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('window:layout', (event, mode: unknown) => {
     if (!controlWindow || event.sender !== controlWindow.webContents) return
@@ -286,6 +333,55 @@ function registerIpc(): void {
       console.error('[background] read failed', error)
       return null
     }
+  })
+
+  ipcMain.handle('sound:pick', async (_event, slot: unknown): Promise<SoundPickResult> => {
+    if (!isSoundSlot(slot)) return { ok: false, reason: 'failed' }
+    const options: OpenDialogOptions = {
+      title: slot === 'warning' ? 'Звук за 1 минуту' : 'Звук на нуле',
+      properties: ['openFile'],
+      filters: [{ name: 'Звук', extensions: SOUND_EXTENSIONS }]
+    }
+    const result = controlWindow
+      ? await dialog.showOpenDialog(controlWindow, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || !result.filePaths[0]) return { ok: false, reason: 'canceled' }
+    const source = result.filePaths[0]
+    const extension = extname(source).toLowerCase()
+    if (!SOUND_EXTENSIONS.includes(extension.slice(1))) return { ok: false, reason: 'failed' }
+    try {
+      if (statSync(source).size > MAX_SOUND_BYTES) return { ok: false, reason: 'too-large' }
+      const folder = soundsDir()
+      mkdirSync(folder, { recursive: true })
+      removeSlotFiles(slot)
+      const fileName = soundFileName(slot, extension)
+      copyFileSync(source, join(folder, fileName))
+      const label = basename(source).replace(/[\\/]/g, '').slice(0, 80) || fileName
+      return { ok: true, fileName, label }
+    } catch (error) {
+      console.error('[sound] pick failed', error)
+      return { ok: false, reason: 'failed' }
+    }
+  })
+
+  ipcMain.handle('sound:read', (_event, fileName: unknown) => {
+    if (typeof fileName !== 'string' || !isStoredSoundName(fileName)) return null
+    const path = join(soundsDir(), fileName)
+    if (!existsSync(path)) return null
+    try {
+      return {
+        mime: soundMime(extname(path).toLowerCase()),
+        base64: readFileSync(path).toString('base64')
+      }
+    } catch (error) {
+      console.error('[sound] read failed', error)
+      return null
+    }
+  })
+
+  ipcMain.handle('sound:clear', (_event, slot: unknown) => {
+    if (!isSoundSlot(slot)) return
+    removeSlotFiles(slot)
   })
 
   ipcMain.handle('output:go-live', (_event, displayIds: number[], timer: TimerState) => {

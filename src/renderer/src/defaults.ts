@@ -1,4 +1,4 @@
-import type { TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
+import type { CountdownFlags, CountdownMode, OvertimeMode, SceneTextStyle, SceneTextStyles, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
 
 export const DEFAULT_TIMER: TimerState = {
   eventName: 'Оперативное совещание',
@@ -10,11 +10,13 @@ export const DEFAULT_TIMER: TimerState = {
   },
   startTime: '14:30',
   endTime: '16:00',
-  costPerMinute: 0,
+  scheduleCostPerMinute: 0,
+  timerCostPerMinute: 0,
   overtimeCostTotal: 0,
-  overtimeElapsed: 0,
+  scheduleOvertimeElapsed: 0,
+  timerOvertimeElapsed: 0,
   overtimeIntervalSeconds: 1,
-  scheduleOvertime: true,
+  overtimeMode: 'schedule',
   remainingLabel: 'До завершения',
   costLabel: 'Итого',
   backgroundMode: 'gradient',
@@ -22,6 +24,23 @@ export const DEFAULT_TIMER: TimerState = {
   backgroundGradientColor: '#19b9d1',
   backgroundGradientAngle: 115,
   fontColor: '#ffffff',
+  allowNegative: { timer: true, 'to-start': false, 'to-end': true },
+  warning: { timer: false, 'to-start': false, 'to-end': false },
+  warningColor: '#ffd000',
+  overtimeColor: '#ef1717',
+  warningSoundFile: null,
+  warningSoundLabel: null,
+  finishSoundFile: null,
+  finishSoundLabel: null,
+  textStyles: {
+    clock: { scale: 1, weight: 300 },
+    schedule: { scale: 1, weight: 300 },
+    heading: { scale: 1, weight: 300 },
+    time: { scale: 1, weight: 300 },
+    event: { scale: 1, weight: 300 },
+    remaining: { scale: 1, weight: 300 },
+    cost: { scale: 1, weight: 300 }
+  },
   backgroundImage: null,
   centralTimeMode: 'to-end',
   visibility: {
@@ -39,6 +58,30 @@ export const DEFAULT_TIMER: TimerState = {
 }
 
 const modes: TimerCentralMode[] = ['current', 'timer', 'to-start', 'to-end']
+const textWeights = [300, 400, 500, 600, 700]
+
+function textStyle(value: unknown, fallback: SceneTextStyle): SceneTextStyle {
+  const source = record(value)
+  const weight = number(source.weight, fallback.weight, 300, 700)
+  const snapped = textWeights.reduce((best, item) => Math.abs(item - weight) < Math.abs(best - weight) ? item : best)
+  return {
+    scale: number(source.scale, fallback.scale, 0.6, 1.8),
+    weight: snapped
+  }
+}
+
+function textStyles(value: unknown): SceneTextStyles {
+  const source = record(value)
+  return {
+    clock: textStyle(source.clock, DEFAULT_TIMER.textStyles.clock),
+    schedule: textStyle(source.schedule, DEFAULT_TIMER.textStyles.schedule),
+    heading: textStyle(source.heading, DEFAULT_TIMER.textStyles.heading),
+    time: textStyle(source.time, DEFAULT_TIMER.textStyles.time),
+    event: textStyle(source.event, DEFAULT_TIMER.textStyles.event),
+    remaining: textStyle(source.remaining, DEFAULT_TIMER.textStyles.remaining),
+    cost: textStyle(source.cost, DEFAULT_TIMER.textStyles.cost)
+  }
+}
 const visibilityKeys: Array<keyof TimerVisibility> = [
   'clock', 'schedule', 'heading', 'eventName', 'remaining', 'cost'
 ]
@@ -60,6 +103,29 @@ function color(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback
 }
 
+const countdownModes: CountdownMode[] = ['timer', 'to-start', 'to-end']
+
+function countdownFlags(value: unknown, fallback: CountdownFlags): CountdownFlags {
+  const source = record(value)
+  const flags = { ...fallback }
+  for (const key of countdownModes) {
+    if (typeof source[key] === 'boolean') flags[key] = source[key]
+  }
+  return flags
+}
+
+function soundFile(value: unknown, slot: 'warning' | 'finish'): string | null {
+  return typeof value === 'string' && new RegExp(`^${slot}\\.(mp3|wav|m4a|aac|ogg|aiff|aif|caf)$`).test(value)
+    ? value
+    : null
+}
+
+function soundLabel(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().slice(0, 80)
+  return trimmed || null
+}
+
 function clockTime(value: unknown, fallback: string): string {
   return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback
 }
@@ -78,6 +144,13 @@ export function normalizeSettings(raw: unknown): TimerSettings {
   }
 
   const duration = Math.trunc(number(timerRaw.duration, DEFAULT_TIMER.duration, 0, 99 * 3600 + 3599))
+  const legacyCost = number(timerRaw.costPerMinute, 0, 0, 1_000_000_000)
+  const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both']
+  const overtimeMode = overtimeModes.includes(timerRaw.overtimeMode as OvertimeMode)
+    ? timerRaw.overtimeMode as OvertimeMode
+    : timerRaw.scheduleOvertime === false
+      ? 'timer'
+      : DEFAULT_TIMER.overtimeMode
   const selectedDisplayIds = Array.isArray(source.selectedDisplayIds)
     ? [...new Set(source.selectedDisplayIds
       .map((value) => Number(value))
@@ -95,13 +168,13 @@ export function normalizeSettings(raw: unknown): TimerSettings {
       },
       startTime: clockTime(timerRaw.startTime, DEFAULT_TIMER.startTime),
       endTime: clockTime(timerRaw.endTime, DEFAULT_TIMER.endTime),
-      costPerMinute: number(timerRaw.costPerMinute, 0, 0, 1_000_000_000),
+      scheduleCostPerMinute: number(timerRaw.scheduleCostPerMinute, legacyCost, 0, 1_000_000_000),
+      timerCostPerMinute: number(timerRaw.timerCostPerMinute, legacyCost, 0, 1_000_000_000),
       overtimeCostTotal: number(timerRaw.overtimeCostTotal, 0, 0, 1_000_000_000_000),
-      overtimeElapsed: 0,
+      scheduleOvertimeElapsed: 0,
+      timerOvertimeElapsed: 0,
       overtimeIntervalSeconds: Math.round(number(timerRaw.overtimeIntervalSeconds, 1, 1, 3600)),
-      scheduleOvertime: typeof timerRaw.scheduleOvertime === 'boolean'
-        ? timerRaw.scheduleOvertime
-        : DEFAULT_TIMER.scheduleOvertime,
+      overtimeMode,
       remainingLabel: string(timerRaw.remainingLabel, DEFAULT_TIMER.remainingLabel, 40),
       costLabel: string(timerRaw.costLabel, DEFAULT_TIMER.costLabel, 40),
       backgroundMode: timerRaw.backgroundMode === 'solid' ? 'solid' : 'gradient',
@@ -117,6 +190,15 @@ export function normalizeSettings(raw: unknown): TimerSettings {
         360
       ),
       fontColor: color(timerRaw.fontColor, DEFAULT_TIMER.fontColor),
+      allowNegative: countdownFlags(timerRaw.allowNegative, DEFAULT_TIMER.allowNegative),
+      warning: countdownFlags(timerRaw.warning, DEFAULT_TIMER.warning),
+      warningColor: color(timerRaw.warningColor, DEFAULT_TIMER.warningColor),
+      overtimeColor: color(timerRaw.overtimeColor, DEFAULT_TIMER.overtimeColor),
+      warningSoundFile: soundFile(timerRaw.warningSoundFile, 'warning'),
+      warningSoundLabel: soundLabel(timerRaw.warningSoundLabel),
+      finishSoundFile: soundFile(timerRaw.finishSoundFile, 'finish'),
+      finishSoundLabel: soundLabel(timerRaw.finishSoundLabel),
+      textStyles: textStyles(timerRaw.textStyles),
       backgroundImage: typeof timerRaw.backgroundImage === 'string'
         && timerRaw.backgroundImage.startsWith('data:image/')
         ? timerRaw.backgroundImage
