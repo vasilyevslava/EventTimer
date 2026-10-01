@@ -756,7 +756,6 @@ export function TimerControl(): JSX.Element {
       setStatus(note)
       return
     }
-    pauseIfTimerHidden(config.centralTimeMode)
     updateDraft(screenConfigFromTimer({ ...timer, ...config }))
     const note = `${presets[index]?.name.trim() || `Пресет ${index + 1}`} загружен`
     setPresetNote(note)
@@ -829,18 +828,27 @@ export function TimerControl(): JSX.Element {
     }
   }
 
+  const airPayload = (): { output: TimerState; pausedTimer: boolean } => {
+    const output = { ...cloneTimer(timer), live: true }
+    const pausedTimer = output.centralTimeMode !== 'timer' && output.running
+    if (pausedTimer) output.running = false
+    return { output, pausedTimer }
+  }
+
   const publish = async (): Promise<void> => {
     if (!selectedDisplayIds.length) {
       setStatus('Выберите хотя бы один экран для эфира')
       return
     }
-    const output = { ...cloneTimer(timer), live: true }
+    const { output, pausedTimer } = airPayload()
     await window.timerPlus.goLive(selectedDisplayIds, output)
-    setTimer((current) => ({ ...current, live: true }))
+    setTimer((current) => ({ ...current, live: true, running: pausedTimer ? false : current.running }))
     setLiveTimer(output)
     setDirty(false)
     setLiveControl(false)
-    setStatus(`Таймер в эфире на экранах: ${selectedDisplayIds.length}`)
+    setStatus(pausedTimer
+      ? `Таймер в эфире на экранах: ${selectedDisplayIds.length}. Таймер на паузе`
+      : `Таймер в эфире на экранах: ${selectedDisplayIds.length}`)
   }
 
   const updateOutput = async (): Promise<void> => {
@@ -848,11 +856,12 @@ export function TimerControl(): JSX.Element {
       setStatus('Выберите хотя бы один экран для эфира')
       return
     }
-    const output = { ...cloneTimer(timer), live: true }
+    const { output, pausedTimer } = airPayload()
     await window.timerPlus.goLive(selectedDisplayIds, output)
+    if (pausedTimer) setTimer((current) => ({ ...current, running: false }))
     setLiveTimer(output)
     setDirty(false)
-    setStatus('Эфир обновлён')
+    setStatus(pausedTimer ? 'Эфир обновлён. Таймер на паузе' : 'Эфир обновлён')
   }
 
   const stopOutput = async (): Promise<void> => {
@@ -921,13 +930,7 @@ export function TimerControl(): JSX.Element {
     setOpenSlot(null)
   }
 
-  const pauseIfTimerHidden = (mode: TimerCentralMode): void => {
-    if (mode === 'timer' || !timerRef.current.running) return
-    updateTimerControl({ running: false })
-  }
-
   const selectMode = (mode: TimerCentralMode): void => {
-    pauseIfTimerHidden(mode)
     updateDraft({ centralTimeMode: mode })
   }
 
