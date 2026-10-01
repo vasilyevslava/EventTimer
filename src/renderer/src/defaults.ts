@@ -1,5 +1,6 @@
-import { PRESET_SLOT_COUNT } from '../../shared'
-import type { CountdownFlags, CountdownMode, OvertimeMode, SceneTextStyle, SceneTextStyles, ScreenConfig, ScreenPreset, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
+import { DEFAULT_SCENE_SLOTS, DEFAULT_SLOT_SHOWN, PRESET_SLOT_COUNT, SCENE_SLOT_ORDER } from '../../shared'
+import type { CountdownFlags, CountdownMode, OvertimeMode, SceneFontFamily, SceneSlotShown, SceneSlots, SceneTextStyle, SceneTextStyles, ScreenConfig, ScreenPreset, SlotContent, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
+import { nearestFontWeight, sceneFont } from './fonts'
 
 export const DEFAULT_TIMER: TimerState = {
   eventName: 'Оперативное совещание',
@@ -34,16 +35,19 @@ export const DEFAULT_TIMER: TimerState = {
   finishSoundFile: null,
   finishSoundLabel: null,
   textStyles: {
-    clock: { scale: 1, weight: 300 },
-    schedule: { scale: 1, weight: 300 },
-    heading: { scale: 1, weight: 300 },
-    time: { scale: 1, weight: 300 },
-    event: { scale: 1, weight: 300 },
-    remaining: { scale: 1, weight: 300 },
-    cost: { scale: 1, weight: 300 }
+    clock: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    date: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    schedule: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    heading: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    time: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    event: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    remaining: { scale: 1, weight: 300, family: 'sb-sans', italic: false },
+    cost: { scale: 1, weight: 300, family: 'sb-sans', italic: false }
   },
   backgroundImage: null,
   centralTimeMode: 'to-end',
+  slots: { ...DEFAULT_SCENE_SLOTS },
+  slotShown: { ...DEFAULT_SLOT_SHOWN },
   visibility: {
     clock: true,
     schedule: true,
@@ -59,15 +63,18 @@ export const DEFAULT_TIMER: TimerState = {
 }
 
 const modes: TimerCentralMode[] = ['current', 'timer', 'to-start', 'to-end']
-const textWeights = [300, 400, 500, 600, 700]
 
 function textStyle(value: unknown, fallback: SceneTextStyle): SceneTextStyle {
   const source = record(value)
-  const weight = number(source.weight, fallback.weight, 300, 700)
-  const snapped = textWeights.reduce((best, item) => Math.abs(item - weight) < Math.abs(best - weight) ? item : best)
+  const requested = typeof source.family === 'string' ? source.family : fallback.family
+  const font = sceneFont(requested)
+  const family = font.id as SceneFontFamily
+  const weight = number(source.weight, fallback.weight, 100, 900)
   return {
     scale: number(source.scale, fallback.scale, 0.6, 1.8),
-    weight: snapped
+    weight: nearestFontWeight(weight, font.weights),
+    family,
+    italic: font.italic && source.italic === true
   }
 }
 
@@ -75,6 +82,7 @@ function textStyles(value: unknown): SceneTextStyles {
   const source = record(value)
   return {
     clock: textStyle(source.clock, DEFAULT_TIMER.textStyles.clock),
+    date: textStyle(source.date, DEFAULT_TIMER.textStyles.date),
     schedule: textStyle(source.schedule, DEFAULT_TIMER.textStyles.schedule),
     heading: textStyle(source.heading, DEFAULT_TIMER.textStyles.heading),
     time: textStyle(source.time, DEFAULT_TIMER.textStyles.time),
@@ -172,6 +180,9 @@ function normalizeTimerState(
 ): TimerState {
   const headingsRaw = record(timerRaw.headings)
   const legacyCost = number(timerRaw.costPerMinute, 0, 0, 1_000_000_000)
+  const slots = normalizeSlots(timerRaw.slots, visibility)
+  const slotShown = normalizeSlotShown(timerRaw.slotShown, slots)
+  const shown = new Set(SCENE_SLOT_ORDER.filter((key) => slotShown[key]).map((key) => slots[key]))
   return {
       eventName: string(timerRaw.eventName, DEFAULT_TIMER.eventName),
       headings: {
@@ -212,13 +223,21 @@ function normalizeTimerState(
       warningSoundLabel: soundLabel(timerRaw.warningSoundLabel),
       finishSoundFile: soundFile(timerRaw.finishSoundFile, 'finish'),
       finishSoundLabel: soundLabel(timerRaw.finishSoundLabel),
+      slots,
+      slotShown,
       textStyles: textStyles(timerRaw.textStyles),
       backgroundImage: typeof timerRaw.backgroundImage === 'string'
         && timerRaw.backgroundImage.startsWith('data:image/')
         ? timerRaw.backgroundImage
         : null,
       centralTimeMode,
-      visibility,
+      visibility: {
+        ...visibility,
+        clock: shown.has('clock'),
+        schedule: shown.has('schedule'),
+        remaining: shown.has('remaining'),
+        cost: shown.has('cost')
+      },
       duration,
       remaining: Math.trunc(number(timerRaw.remaining, duration, -7 * 24 * 3600, 7 * 24 * 3600)),
       running: false,
@@ -253,6 +272,7 @@ export function screenConfigFromTimer(timer: TimerState): ScreenConfig {
     finishSoundLabel: timer.finishSoundLabel,
     textStyles: {
       clock: { ...timer.textStyles.clock },
+      date: { ...(timer.textStyles.date ?? DEFAULT_TIMER.textStyles.date) },
       schedule: { ...timer.textStyles.schedule },
       heading: { ...timer.textStyles.heading },
       time: { ...timer.textStyles.time },
@@ -262,6 +282,8 @@ export function screenConfigFromTimer(timer: TimerState): ScreenConfig {
     },
     backgroundImage: timer.backgroundImage,
     centralTimeMode: timer.centralTimeMode,
+    slots: { ...timer.slots },
+    slotShown: { ...timer.slotShown },
     visibility: { ...timer.visibility }
   }
 }
@@ -287,6 +309,46 @@ function centralModeFrom(timerRaw: Record<string, unknown>): TimerCentralMode {
   return modes.includes(timerRaw.centralTimeMode as TimerCentralMode)
     ? timerRaw.centralTimeMode as TimerCentralMode
     : DEFAULT_TIMER.centralTimeMode
+}
+
+const slotContents: SlotContent[] = ['empty', 'clock', 'date', 'schedule', 'remaining', 'cost']
+
+function normalizeSlots(raw: unknown, visibility: TimerVisibility): SceneSlots {
+  const source = record(raw)
+  const saved = SCENE_SLOT_ORDER.some((key) => typeof source[key] === 'string')
+  const slots: SceneSlots = saved
+    ? { ...DEFAULT_SCENE_SLOTS }
+    : {
+      topLeft: visibility.clock ? 'clock' : 'empty',
+      topCenter: 'date',
+      topRight: visibility.schedule ? 'schedule' : 'empty',
+      bottomLeft: visibility.remaining ? 'remaining' : 'empty',
+      bottomCenter: 'empty',
+      bottomRight: visibility.cost ? 'cost' : 'empty'
+    }
+  if (saved) {
+    for (const key of SCENE_SLOT_ORDER) {
+      const value = source[key]
+      if (typeof value === 'string' && slotContents.includes(value as SlotContent)) slots[key] = value as SlotContent
+    }
+  }
+  const seen = new Set<SlotContent>()
+  for (const key of SCENE_SLOT_ORDER) {
+    const content = slots[key]
+    if (content === 'empty') continue
+    if (seen.has(content)) slots[key] = 'empty'
+    else seen.add(content)
+  }
+  return slots
+}
+
+function normalizeSlotShown(raw: unknown, slots: SceneSlots): SceneSlotShown {
+  const source = record(raw)
+  const shown = { ...DEFAULT_SLOT_SHOWN }
+  for (const key of SCENE_SLOT_ORDER) {
+    shown[key] = typeof source[key] === 'boolean' ? source[key] : slots[key] !== 'empty'
+  }
+  return shown
 }
 
 function visibilityFrom(timerRaw: Record<string, unknown>): TimerVisibility {

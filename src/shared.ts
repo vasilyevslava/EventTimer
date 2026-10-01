@@ -4,11 +4,40 @@ export type CountdownFlags = Record<CountdownMode, boolean>
 export type OvertimeMode = 'schedule' | 'timer' | 'both'
 export type SoundSlot = 'warning' | 'finish'
 export type TimerHeadings = Record<TimerCentralMode, string>
-export type SceneTextKey = 'clock' | 'schedule' | 'heading' | 'time' | 'event' | 'remaining' | 'cost'
+export type SceneTextKey = 'clock' | 'date' | 'schedule' | 'heading' | 'time' | 'event' | 'remaining' | 'cost'
+export type SceneSlot = 'topLeft' | 'topCenter' | 'topRight' | 'bottomLeft' | 'bottomCenter' | 'bottomRight'
+export type SlotContent = 'empty' | 'clock' | 'date' | 'schedule' | 'remaining' | 'cost'
+export type SceneSlots = Record<SceneSlot, SlotContent>
+export type SceneSlotShown = Record<SceneSlot, boolean>
+
+export const SCENE_SLOT_ORDER: SceneSlot[] = [
+  'topLeft', 'topCenter', 'topRight', 'bottomLeft', 'bottomCenter', 'bottomRight'
+]
+
+export const DEFAULT_SCENE_SLOTS: SceneSlots = {
+  topLeft: 'clock',
+  topCenter: 'date',
+  topRight: 'schedule',
+  bottomLeft: 'remaining',
+  bottomCenter: 'empty',
+  bottomRight: 'cost'
+}
+
+export const DEFAULT_SLOT_SHOWN: SceneSlotShown = {
+  topLeft: true,
+  topCenter: true,
+  topRight: true,
+  bottomLeft: true,
+  bottomCenter: false,
+  bottomRight: true
+}
+export type SceneFontFamily = 'sb-sans' | 'sf-pro' | 'sf-display' | 'sf-text' | 'sf-rounded'
 
 export interface SceneTextStyle {
   scale: number
   weight: number
+  family: SceneFontFamily
+  italic: boolean
 }
 
 export type SceneTextStyles = Record<SceneTextKey, SceneTextStyle>
@@ -52,6 +81,8 @@ export interface TimerState {
   textStyles: SceneTextStyles
   backgroundImage: string | null
   centralTimeMode: TimerCentralMode
+  slots: SceneSlots
+  slotShown: SceneSlotShown
   visibility: TimerVisibility
   duration: number
   remaining: number
@@ -95,6 +126,8 @@ export interface ScreenConfig {
   textStyles: SceneTextStyles
   backgroundImage: string | null
   centralTimeMode: TimerCentralMode
+  slots: SceneSlots
+  slotShown: SceneSlotShown
   visibility: TimerVisibility
 }
 

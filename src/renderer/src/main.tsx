@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { OutputDisplay, TimerControl } from './App'
+import './fonts.css'
 import './styles.css'
 
 const params = new URLSearchParams(window.location.search)

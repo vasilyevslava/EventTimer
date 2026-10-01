@@ -1,22 +1,28 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type {
   CountdownMode,
   DisplayInfo,
+  SceneSlot,
+  SceneSlotShown,
+  SceneSlots,
   SceneTextKey,
   ScreenPreset,
+  SlotContent,
   SoundSlot,
   TimerCentralMode,
   TimerSettings,
   TimerState,
   TimerVisibility
 } from '../../shared'
-import { PRESET_SLOT_COUNT } from '../../shared'
+import { DEFAULT_SCENE_SLOTS, DEFAULT_SLOT_SHOWN, PRESET_SLOT_COUNT, SCENE_SLOT_ORDER } from '../../shared'
 import { DEFAULT_TIMER, defaultHeading, normalizeSettings, screenConfigFromTimer } from './defaults'
+import { nearestFontWeight, SCENE_FONTS, sceneFont } from './fonts'
 import appIcon from './assets/app-icon.png'
 import { EventTimerScene } from './EventTimerScene'
 import {
   advanceTimer,
+  retargetTimerCost,
   consumeCue,
   digitPhase,
   normalizeTimePart,
@@ -43,17 +49,27 @@ const behaviorModes: Array<[CountdownMode, string]> = [
   ['to-end', 'До конца мероприятия']
 ]
 
-const visibilityOptions: Array<[keyof TimerVisibility, string]> = [
-  ['clock', 'Часы слева'],
-  ['schedule', 'Начало / конец'],
-  ['heading', 'Заголовок'],
-  ['eventName', 'Название'],
+const SLOT_PLACES: Record<SceneSlot, string> = {
+  topLeft: 'Левый верх',
+  topCenter: 'Центр верх',
+  topRight: 'Правый верх',
+  bottomLeft: 'Левый низ',
+  bottomCenter: 'Центр низ',
+  bottomRight: 'Правый низ'
+}
+
+const SLOT_CHOICES: Array<[SlotContent, string]> = [
+  ['clock', 'Время'],
+  ['date', 'Дата'],
+  ['schedule', 'Начало и конец'],
   ['remaining', 'До завершения'],
-  ['cost', 'Стоимость']
+  ['cost', 'Перелимит'],
+  ['empty', 'Пусто']
 ]
 
 const TEXT_LABELS: Record<SceneTextKey, string> = {
   clock: 'Часы',
+  date: 'Дата',
   schedule: 'Начало и конец',
   heading: 'Заголовок',
   time: 'Цифры таймера',
@@ -61,13 +77,6 @@ const TEXT_LABELS: Record<SceneTextKey, string> = {
   remaining: 'До завершения',
   cost: 'Итого'
 }
-
-const TEXT_WEIGHTS: Array<[number, string]> = [
-  [300, 'Тонкий'],
-  [400, 'Обычный'],
-  [500, 'Средний'],
-  [700, 'Жирный']
-]
 
 function blobUrl(mime: string, base64: string): string {
   const binary = atob(base64)
@@ -138,19 +147,45 @@ function HeadingField({
 function BlockTextStyle({
   scale,
   weight,
+  family,
+  italic,
   onScale,
   onWeight,
+  onFamily,
+  onItalic,
   onReset
 }: {
   scale: number
   weight: number
+  family: TimerState['textStyles'][SceneTextKey]['family']
+  italic: boolean
   onScale: (scale: number) => void
   onWeight: (weight: number) => void
+  onFamily: (family: TimerState['textStyles'][SceneTextKey]['family']) => void
+  onItalic: (italic: boolean) => void
   onReset: () => void
 }): JSX.Element {
+  const font = sceneFont(family)
   return (
     <>
       <p className="section-label">Оформление</p>
+      <label>
+        <span>Шрифт</span>
+        <select value={font.id} onChange={(event) => onFamily(sceneFont(event.target.value).id)}>
+          {SCENE_FONTS.map((item) => (
+            <option key={item.id} value={item.id}>{item.label}</option>
+          ))}
+        </select>
+      </label>
+      {font.italic && (
+        <div className="field">
+          <span>Начертание</span>
+          <div className="segmented two">
+            <button className={italic ? '' : 'active'} onClick={() => onItalic(false)}>Обычное</button>
+            <button className={italic ? 'active' : ''} onClick={() => onItalic(true)}>Курсив</button>
+          </div>
+        </div>
+      )}
       <label>
         <span>Размер</span>
         <div className="size-row">
@@ -168,7 +203,7 @@ function BlockTextStyle({
       <div className="field">
         <span>Толщина</span>
         <div className="weight-choices">
-          {TEXT_WEIGHTS.map(([value, label]) => (
+          {font.weights.map(([value, label]) => (
             <button
               key={value}
               className={weight === value ? 'active' : ''}
@@ -325,6 +360,122 @@ function PresetSlot({
   )
 }
 
+function choiceLabel(content: SlotContent): string {
+  return SLOT_CHOICES.find(([value]) => value === content)?.[1] ?? 'Пусто'
+}
+
+function ShowMap({
+  slots,
+  slotShown,
+  layoutEditing,
+  openSlot,
+  headingOn,
+  nameOn,
+  onOpen,
+  onAssign,
+  onToggleSlot,
+  onToggle
+}: {
+  slots: SceneSlots
+  slotShown: SceneSlotShown
+  layoutEditing: boolean
+  openSlot: SceneSlot | null
+  headingOn: boolean
+  nameOn: boolean
+  onOpen: (slot: SceneSlot | null) => void
+  onAssign: (slot: SceneSlot, content: SlotContent) => void
+  onToggleSlot: (slot: SceneSlot) => void
+  onToggle: (key: 'heading' | 'eventName') => void
+}): JSX.Element {
+  const anchorRef = useRef<HTMLButtonElement>(null)
+  const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  useLayoutEffect(() => {
+    const node = anchorRef.current
+    if (!node || !openSlot) {
+      setMenuBox(null)
+      return
+    }
+    const rect = node.getBoundingClientRect()
+    const height = 248
+    const below = rect.bottom + 6
+    const top = below + height > window.innerHeight ? Math.max(8, rect.top - height - 6) : below
+    setMenuBox({ top, left: rect.left, width: Math.max(rect.width, 168) })
+  }, [openSlot])
+
+  useEffect(() => {
+    if (!openSlot) return
+    const close = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Element && target.closest('.show-slot.is-open, .show-menu')) return
+      onOpen(null)
+    }
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [openSlot, onOpen])
+
+  const place = (slot: SceneSlot): JSX.Element => {
+    const content = slots[slot] ?? 'empty'
+    const shown = slotShown[slot] !== false
+    const open = layoutEditing && openSlot === slot
+    return (
+      <button
+        key={slot}
+        type="button"
+        ref={open ? anchorRef : undefined}
+        className={`show-slot ${open ? 'is-open' : ''} ${shown ? 'is-on' : 'is-off'}`}
+        onClick={() => {
+          if (layoutEditing) onOpen(open ? null : slot)
+          else onToggleSlot(slot)
+        }}
+      >
+        <span>{SLOT_PLACES[slot]}</span>
+        <strong>{choiceLabel(content)}</strong>
+      </button>
+    )
+  }
+
+  const fixed = (key: 'heading' | 'eventName', title: string, on: boolean): JSX.Element => (
+    <button
+      type="button"
+      className={`show-fixed ${on ? 'is-on' : 'is-off'}`}
+      onClick={() => { if (!layoutEditing) onToggle(key) }}
+    >
+      <span>{title}</span>
+      <strong>{on ? 'На экране' : 'Скрыт'}</strong>
+    </button>
+  )
+
+  return (
+    <div className={`show-map ${layoutEditing ? 'is-editing' : ''}`}>
+      {place('topLeft')}
+      {place('topCenter')}
+      {place('topRight')}
+      <span />
+      {fixed('heading', 'Заголовок', headingOn)}
+      <span />
+      <span />
+      {fixed('eventName', 'Название', nameOn)}
+      <span />
+      {place('bottomLeft')}
+      {place('bottomCenter')}
+      {place('bottomRight')}
+      {openSlot && menuBox && (
+        <div className="show-menu" style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width }}>
+          {SLOT_CHOICES.map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={slots[openSlot] === value ? 'active' : ''}
+              onClick={() => onAssign(openSlot, value)}
+            >{label}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function screensLabel(count: number): string {
   const mod10 = count % 10
   const mod100 = count % 100
@@ -340,11 +491,14 @@ function cloneTimer(timer: TimerState): TimerState {
   return {
     ...timer,
     headings: { ...timer.headings },
+    slots: { ...(timer.slots ?? DEFAULT_SCENE_SLOTS) },
+    slotShown: { ...(timer.slotShown ?? DEFAULT_SLOT_SHOWN) },
     visibility: { ...timer.visibility },
     allowNegative: { ...timer.allowNegative },
     warning: { ...timer.warning },
     textStyles: {
       clock: { ...timer.textStyles.clock },
+      date: { ...(timer.textStyles.date ?? { scale: 1, weight: 300, family: 'sb-sans', italic: false }) },
       schedule: { ...timer.textStyles.schedule },
       heading: { ...timer.textStyles.heading },
       time: { ...timer.textStyles.time },
@@ -379,6 +533,8 @@ export function TimerControl(): JSX.Element {
   const [timeParts, setTimeParts] = useState<TimeParts>(() => timePartsFromSeconds(DEFAULT_TIMER.remaining))
   const [expanded, setExpanded] = useState(true)
   const [textEditing, setTextEditing] = useState(false)
+  const [layoutEditing, setLayoutEditing] = useState(false)
+  const [openSlot, setOpenSlot] = useState<SceneSlot | null>(null)
   const [selectedText, setSelectedText] = useState<SceneTextKey | null>(null)
   const [presets, setPresets] = useState<ScreenPreset[]>(() => (
     Array.from({ length: PRESET_SLOT_COUNT }, () => ({ name: '', config: null }))
@@ -629,9 +785,19 @@ export function TimerControl(): JSX.Element {
   const updateTimerControl = (
     update: Partial<Pick<TimerState, 'duration' | 'remaining' | 'running'>>
   ): void => {
-    setTimer((current) => ({ ...current, ...update }))
+    const apply = (current: TimerState): TimerState => {
+      if (update.remaining == null || update.remaining === current.remaining) return { ...current, ...update }
+      const cost = retargetTimerCost(current, update.remaining)
+      return {
+        ...current,
+        ...update,
+        overtimeCostTotal: cost.overtimeCostTotal,
+        timerOvertimeElapsed: cost.timerOvertimeElapsed
+      }
+    }
+    setTimer(apply)
     if (isLive && liveControl) {
-      setLiveTimer((current) => current ? { ...current, ...update } : current)
+      setLiveTimer((current) => current ? apply(current) : current)
     } else if (isLive) {
       setDirty(true)
     }
@@ -676,6 +842,8 @@ export function TimerControl(): JSX.Element {
     if (!expanded) {
       setTextEditing(false)
       setSelectedText(null)
+      setLayoutEditing(false)
+      setOpenSlot(null)
     }
   }, [expanded])
 
@@ -686,6 +854,49 @@ export function TimerControl(): JSX.Element {
         [key]: { ...timer.textStyles[key], ...patch }
       }
     })
+  }
+
+  const slotsNow = (): SceneSlots => ({ ...(timer.slots ?? DEFAULT_SCENE_SLOTS) })
+  const shownNow = (): SceneSlotShown => ({ ...(timer.slotShown ?? DEFAULT_SLOT_SHOWN) })
+
+  const visibilityFor = (slots: SceneSlots, slotShown: SceneSlotShown): TimerVisibility => {
+    const active = new Set(SCENE_SLOT_ORDER.filter((key) => slotShown[key]).map((key) => slots[key]))
+    return {
+      ...timer.visibility,
+      clock: active.has('clock'),
+      schedule: active.has('schedule'),
+      remaining: active.has('remaining'),
+      cost: active.has('cost')
+    }
+  }
+
+  const toggleSlot = (slot: SceneSlot): void => {
+    const slots = slotsNow()
+    const slotShown = shownNow()
+    slotShown[slot] = !slotShown[slot]
+    updateDraft({ slotShown, visibility: visibilityFor(slots, slotShown) })
+  }
+
+  const assignSlot = (slot: SceneSlot, content: SlotContent): void => {
+    const next = slotsNow()
+    const slotShown = shownNow()
+    if (content !== 'empty') {
+      for (const key of SCENE_SLOT_ORDER) {
+        if (key !== slot && next[key] === content) {
+          const displaced = next[slot]
+          next[key] = displaced
+          slotShown[key] = displaced !== 'empty'
+        }
+      }
+    }
+    next[slot] = content
+    slotShown[slot] = content !== 'empty'
+    updateDraft({
+      slots: next,
+      slotShown,
+      visibility: visibilityFor(next, slotShown)
+    })
+    setOpenSlot(null)
   }
 
   const selectMode = (mode: TimerCentralMode): void => {
@@ -699,8 +910,11 @@ export function TimerControl(): JSX.Element {
         [key]: { ...current[key], [mode]: enabled }
       }
       if (key === 'allowNegative' && mode === 'timer' && !enabled && current.remaining < 0) {
+        const cost = retargetTimerCost(current, 0)
         next.remaining = 0
         next.running = false
+        next.overtimeCostTotal = cost.overtimeCostTotal
+        next.timerOvertimeElapsed = cost.timerOvertimeElapsed
       }
       return next
     })
@@ -1011,6 +1225,42 @@ export function TimerControl(): JSX.Element {
               >
                 {textEditing ? 'Завершить редактирование' : 'Редактировать элементы'}
               </button>
+              <div className="settings-card">
+                <p className="card-title">Блок на экране</p>
+                <p className="section-label">Что показывают часы</p>
+                <div className="segmented mode-grid">
+                  {modeOptions.map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      className={timer.centralTimeMode === mode ? 'active' : ''}
+                      onClick={() => selectMode(mode)}
+                    >{label}</button>
+                  ))}
+                </div>
+                {textEditing && activeCountdown && (
+                  <div className="visibility-grid">
+                    <button
+                      className={timer.allowNegative[activeCountdown[0]] ? 'active' : ''}
+                      onClick={() => setModeFlag('allowNegative', activeCountdown[0], !timer.allowNegative[activeCountdown[0]])}
+                    >
+                      <i />Уходить в минус
+                    </button>
+                    <button
+                      className={timer.warning[activeCountdown[0]] ? 'active' : ''}
+                      onClick={() => setModeFlag('warning', activeCountdown[0], !timer.warning[activeCountdown[0]])}
+                    >
+                      <i />Предупреждение
+                    </button>
+                  </div>
+                )}
+                {!selectedText && (
+                  <p className="text-edit-hint">
+                    {textEditing
+                      ? 'Нажмите на превью: часы, начало и конец, заголовок, цифры, название или подпись внизу. Пустое место снимает выбор.'
+                      : 'Включите «Редактировать элементы», затем нажмите блок на превью.'}
+                  </p>
+                )}
+              </div>
               {selectedText ? (
                 <div className="settings-card">
                   <p className="card-title">{TEXT_LABELS[selectedText]}</p>
@@ -1044,30 +1294,6 @@ export function TimerControl(): JSX.Element {
                   )}
                   {selectedText === 'time' && (
                     <>
-                      <p className="section-label">Что горит крупно</p>
-                      <div className="segmented mode-grid">
-                        {modeOptions.map(([mode, label]) => (
-                          <button key={mode} className={timer.centralTimeMode === mode ? 'active' : ''} onClick={() => selectMode(mode)}>{label}</button>
-                        ))}
-                      </div>
-                      {activeCountdown ? (
-                        <div className="visibility-grid">
-                          <button
-                            className={timer.allowNegative[activeCountdown[0]] ? 'active' : ''}
-                            onClick={() => setModeFlag('allowNegative', activeCountdown[0], !timer.allowNegative[activeCountdown[0]])}
-                          >
-                            <i />Уходить в минус
-                          </button>
-                          <button
-                            className={timer.warning[activeCountdown[0]] ? 'active' : ''}
-                            onClick={() => setModeFlag('warning', activeCountdown[0], !timer.warning[activeCountdown[0]])}
-                          >
-                            <i />Предупреждение
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="text-edit-hint">В центре часы. Минус и предупреждение здесь не используются.</p>
-                      )}
                       {!timer.visibility.heading && (
                         <HeadingField
                           label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
@@ -1126,35 +1352,53 @@ export function TimerControl(): JSX.Element {
                   <BlockTextStyle
                     scale={timer.textStyles[selectedText]?.scale ?? 1}
                     weight={timer.textStyles[selectedText]?.weight ?? 300}
+                    family={timer.textStyles[selectedText]?.family ?? 'sb-sans'}
+                    italic={timer.textStyles[selectedText]?.italic ?? false}
                     onScale={(scale) => setTextStyle(selectedText, { scale })}
                     onWeight={(weight) => setTextStyle(selectedText, { weight })}
-                    onReset={() => setTextStyle(selectedText, { scale: 1, weight: 300 })}
+                    onFamily={(family) => {
+                      const spec = sceneFont(family)
+                      const current = timer.textStyles[selectedText]
+                      setTextStyle(selectedText, {
+                        family,
+                        italic: spec.italic && Boolean(current?.italic),
+                        weight: nearestFontWeight(current?.weight ?? 300, spec.weights)
+                      })
+                    }}
+                    onItalic={(italic) => setTextStyle(selectedText, { italic })}
+                    onReset={() => setTextStyle(selectedText, { scale: 1, weight: 300, family: 'sb-sans', italic: false })}
                   />
                 </div>
-              ) : (
-                <div className="settings-card">
-                  <p className="card-title">Блок на экране</p>
-                  <p className="text-edit-hint">
-                    {textEditing
-                      ? 'Нажмите на превью: часы, начало и конец, заголовок, цифры, название или подпись внизу. Пустое место снимает выбор.'
-                      : 'Включите «Редактировать элементы», затем нажмите блок на превью.'}
-                  </p>
-                </div>
-              )}
+              ) : null}
 
               <div className="settings-card">
                 <p className="card-title">Что показывать</p>
-                <div className="visibility-grid">
-                  {visibilityOptions.map(([key, label]) => (
-                    <button
-                      key={key}
-                      className={timer.visibility[key] ? 'active' : ''}
-                      onClick={() => updateDraft({ visibility: { ...timer.visibility, [key]: !timer.visibility[key] } })}
-                    >
-                      <i />{label}
-                    </button>
-                  ))}
-                </div>
+                <button
+                  className={`text-edit-toggle ${layoutEditing ? 'active' : ''}`}
+                  onClick={() => {
+                    setLayoutEditing((value) => !value)
+                    setOpenSlot(null)
+                  }}
+                >
+                  {layoutEditing ? 'Завершить редактирование' : 'Редактировать отображение'}
+                </button>
+                <ShowMap
+                  slots={timer.slots ?? DEFAULT_SCENE_SLOTS}
+                  slotShown={timer.slotShown ?? DEFAULT_SLOT_SHOWN}
+                  layoutEditing={layoutEditing}
+                  openSlot={openSlot}
+                  headingOn={timer.visibility.heading}
+                  nameOn={timer.visibility.eventName}
+                  onOpen={setOpenSlot}
+                  onAssign={assignSlot}
+                  onToggleSlot={toggleSlot}
+                  onToggle={(key) => updateDraft({ visibility: { ...timer.visibility, [key]: !timer.visibility[key] } })}
+                />
+                <p className="text-edit-hint">
+                  {layoutEditing
+                    ? 'Нажмите блок и выберите, что показывать.'
+                    : 'Нажмите блок, чтобы скрыть или показать его. Рамка значит, что он на экране.'}
+                </p>
               </div>
 
               <div className="settings-card">

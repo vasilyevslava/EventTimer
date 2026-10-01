@@ -31,8 +31,45 @@ function accrueOvertime(
   return { elapsed: 0, add: (costPerMinute / 60) * interval }
 }
 
+function overtimeInterval(timer: TimerState): number {
+  return Math.min(3600, Math.max(1, Math.trunc(timer.overtimeIntervalSeconds) || 1))
+}
+
+function billedOvertimeSeconds(seconds: number, interval: number): number {
+  if (seconds <= 0) return 0
+  return Math.floor(seconds / interval) * interval
+}
+
+/** Timer overtime money follows the current negative time, including after a manual jump. */
+export function retargetTimerCost(
+  timer: TimerState,
+  nextRemaining: number
+): { overtimeCostTotal: number; timerOvertimeElapsed: number } {
+  const interval = overtimeInterval(timer)
+  const countsTimer = (timer.overtimeMode === 'timer' || timer.overtimeMode === 'both')
+    && timer.allowNegative.timer
+    && timer.timerCostPerMinute > 0
+  if (!countsTimer) {
+    return {
+      overtimeCostTotal: timer.overtimeCostTotal,
+      timerOvertimeElapsed: nextRemaining < 0 ? timer.timerOvertimeElapsed : 0
+    }
+  }
+  const before = billedOvertimeSeconds(Math.max(0, -timer.remaining), interval)
+  const afterSeconds = Math.max(0, -nextRemaining)
+  const after = billedOvertimeSeconds(afterSeconds, interval)
+  const afterMoney = (after / 60) * timer.timerCostPerMinute
+  const overtimeCostTotal = timer.overtimeMode === 'timer'
+    ? afterMoney
+    : Math.max(0, timer.overtimeCostTotal + afterMoney - (before / 60) * timer.timerCostPerMinute)
+  return {
+    overtimeCostTotal,
+    timerOvertimeElapsed: afterSeconds - after
+  }
+}
+
 export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolean): TimerState {
-  const interval = Math.min(3600, Math.max(1, Math.trunc(timer.overtimeIntervalSeconds) || 1))
+  const interval = overtimeInterval(timer)
   let remaining = tickCountdown ? timer.remaining - 1 : timer.remaining
   let running = timer.running
   if (tickCountdown && !timer.allowNegative.timer && remaining <= 0) {
@@ -40,10 +77,13 @@ export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolea
     running = false
   }
   const mode = timer.overtimeMode
-  const scheduleActive = (mode === 'schedule' || mode === 'both')
+  const counting = timer.running
+  const scheduleActive = counting
+    && (mode === 'schedule' || mode === 'both')
     && timer.allowNegative['to-end']
     && secondsUntilTime(now, timer.endTime) < 0
-  const timerActive = (mode === 'timer' || mode === 'both')
+  const timerActive = counting
+    && (mode === 'timer' || mode === 'both')
     && timer.allowNegative.timer
     && remaining < 0
   if (

@@ -1,18 +1,22 @@
-import type { SceneTextKey } from '../../shared'
+import type { SceneSlot } from '../../shared'
 
-export const SCENE_TEXT_KEYS: SceneTextKey[] = [
-  'clock', 'schedule', 'heading', 'time', 'event', 'remaining', 'cost'
+export type SceneMeasureKey = SceneSlot | 'heading' | 'time' | 'event'
+
+export const SCENE_TEXT_KEYS: SceneMeasureKey[] = [
+  'topLeft', 'topCenter', 'topRight', 'heading', 'time', 'event', 'bottomLeft', 'bottomCenter', 'bottomRight'
 ]
 
 /** Widest a block may be, as a fraction of the frame width. */
-const MAX_WIDTH: Record<SceneTextKey, number> = {
-  clock: 0.46,
-  schedule: 0.46,
+const MAX_WIDTH: Record<SceneMeasureKey, number> = {
+  topLeft: 0.34,
+  topCenter: 0.32,
+  topRight: 0.34,
   heading: 0.86,
   time: 0.94,
   event: 0.86,
-  remaining: 0.46,
-  cost: 0.46
+  bottomLeft: 0.34,
+  bottomCenter: 0.32,
+  bottomRight: 0.34
 }
 
 export interface TextMetric {
@@ -24,13 +28,23 @@ export interface TextMetric {
 }
 
 export interface ScenePlacement {
-  fit: Record<SceneTextKey, number>
+  fit: Record<SceneMeasureKey, number>
   /** Center Y for heading and time, top edge for the event block. */
   top: Partial<Record<'heading' | 'time' | 'event', number>>
 }
 
-export function identityFits(): Record<SceneTextKey, number> {
-  return { clock: 1, schedule: 1, heading: 1, time: 1, event: 1, remaining: 1, cost: 1 }
+export function identityFits(): Record<SceneMeasureKey, number> {
+  return {
+    topLeft: 1,
+    topCenter: 1,
+    topRight: 1,
+    heading: 1,
+    time: 1,
+    event: 1,
+    bottomLeft: 1,
+    bottomCenter: 1,
+    bottomRight: 1
+  }
 }
 
 function cq(frameW: number, frameH: number, cqw: number, cqh: number): number {
@@ -45,12 +59,12 @@ function cq(frameW: number, frameH: number, cqw: number, cqh: number): number {
 export function placeSceneText(
   frameW: number,
   frameH: number,
-  items: Partial<Record<SceneTextKey, TextMetric>>
+  items: Partial<Record<SceneMeasureKey, TextMetric>>
 ): ScenePlacement {
   const fit = identityFits()
   if (frameW <= 0 || frameH <= 0) return { fit, top: {} }
 
-  const sized = (key: SceneTextKey): { height: number, delta: number } | null => {
+  const sized = (key: SceneMeasureKey): { height: number, delta: number } | null => {
     const item = items[key]
     if (!item || item.renderedScale <= 0) return null
     const applied = Math.max(item.fit, 0.001)
@@ -64,15 +78,17 @@ export function placeSceneText(
     return { height, delta: height - heightAt1 }
   }
 
-  const clock = sized('clock')
-  const schedule = sized('schedule')
+  const topLeft = sized('topLeft')
+  const topCenter = sized('topCenter')
+  const topRight = sized('topRight')
   const heading = sized('heading')
   const time = sized('time')
   const event = sized('event')
-  const remaining = sized('remaining')
-  const cost = sized('cost')
+  const bottomLeft = sized('bottomLeft')
+  const bottomCenter = sized('bottomCenter')
+  const bottomRight = sized('bottomRight')
 
-  const capBlock = (box: { height: number } | null, key: SceneTextKey, maxFraction: number): number => {
+  const capBlock = (box: { height: number } | null, key: SceneMeasureKey, maxFraction: number): number => {
     if (!box) return 0
     const maxHeight = frameH * maxFraction
     if (box.height > maxHeight && box.height > 0) {
@@ -82,17 +98,20 @@ export function placeSceneText(
     return box.height
   }
 
-  const clockH = capBlock(clock, 'clock', 0.34)
-  const scheduleH = capBlock(schedule, 'schedule', 0.34)
+  const topLeftH = capBlock(topLeft, 'topLeft', 0.34)
+  const topCenterH = capBlock(topCenter, 'topCenter', 0.22)
+  const topRightH = capBlock(topRight, 'topRight', 0.34)
   const topEdge = Math.max(
-    clock ? frameH * 0.037 + clockH : 0,
-    schedule ? frameH * 0.019 + scheduleH : 0
+    topLeft ? frameH * 0.037 + topLeftH : 0,
+    topCenter ? frameH * 0.032 + topCenterH : 0,
+    topRight ? frameH * 0.019 + topRightH : 0
   )
   const topLimit = topEdge > 0 ? topEdge + frameH * 0.018 : frameH * 0.04
 
-  const remainingH = capBlock(remaining, 'remaining', 0.24)
-  const costH = capBlock(cost, 'cost', 0.24)
-  const footerH = Math.max(remainingH, costH)
+  const bottomLeftH = capBlock(bottomLeft, 'bottomLeft', 0.24)
+  const bottomCenterH = capBlock(bottomCenter, 'bottomCenter', 0.24)
+  const bottomRightH = capBlock(bottomRight, 'bottomRight', 0.24)
+  const footerH = Math.max(bottomLeftH, bottomCenterH, bottomRightH)
   const bottomLimit = frameH - frameH * 0.036 - footerH - frameH * 0.018
 
   let headingH = heading?.height ?? 0
