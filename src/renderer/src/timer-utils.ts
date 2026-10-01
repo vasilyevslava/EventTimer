@@ -120,6 +120,47 @@ export function commitTimerSession(timer: TimerState): OvertimeCost {
   return packCost(banked + session, 0, 0)
 }
 
+function fullEventScheduleMoney(timer: TimerState, now: Date): number {
+  if (!timer.allowNegative['to-end'] || timer.scheduleCostPerMinute <= 0) return 0
+  const seconds = Math.max(0, -secondsUntilTime(now, timer.endTime))
+  const billed = billedOvertimeSeconds(seconds, overtimeInterval(timer))
+  return (billed / 60) * timer.scheduleCostPerMinute
+}
+
+function countsScheduleMode(mode: TimerState['overtimeMode']): boolean {
+  return mode === 'schedule' || mode === 'both'
+}
+
+/** Money for the whole event that is not already in the running total. */
+export function captureFullEventCredit(timer: TimerState, now: Date): number {
+  const incremental = Math.max(0, timer.scheduleOvertimeCost || 0)
+  const already = countsScheduleMode(timer.overtimeMode) ? incremental : 0
+  return Math.max(0, fullEventScheduleMoney(timer, now) - already)
+}
+
+/** Recorded money and the live counter stay. The button only adds or removes its own credit. */
+export function presentCost(timer: TimerState, now: Date): TimerState {
+  const parts = splitOvertimeCost(timer)
+  const incremental = Math.max(0, timer.scheduleOvertimeCost || 0)
+  const countingFullEvent = !!timer.countFullEventOvertime
+  const realtime = countsScheduleMode(timer.overtimeMode) || countingFullEvent ? incremental : 0
+  const storedCredit = timer.fullEventOvertimeCredit
+  const credit = !countingFullEvent
+    ? 0
+    : typeof storedCredit === 'number'
+      ? Math.max(0, storedCredit)
+      : captureFullEventCredit(timer, now)
+  return {
+    ...timer,
+    overtimeCostBanked: parts.banked,
+    sessionOvertimeCost: parts.session,
+    scheduleOvertimeCost: incremental,
+    countFullEventOvertime: countingFullEvent,
+    fullEventOvertimeCredit: credit,
+    overtimeCostTotal: Math.max(0, parts.banked + parts.session + realtime + credit)
+  }
+}
+
 /** +/- minutes rewrites only the open timer session. Recorded overtime stays put. */
 export function retargetTimerCost(timer: TimerState, nextRemaining: number): OvertimeCost {
   const { banked, session } = splitOvertimeCost(timer)
@@ -141,10 +182,9 @@ export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolea
   }
   const mode = timer.overtimeMode
   const counting = timer.running
-  const scheduleActive = counting
-    && (mode === 'schedule' || mode === 'both')
-    && timer.allowNegative['to-end']
-    && secondsUntilTime(now, timer.endTime) < 0
+  const pastEnd = timer.allowNegative['to-end'] && secondsUntilTime(now, timer.endTime) < 0
+  const scheduleActive = pastEnd && (countsScheduleMode(mode) || !!timer.countFullEventOvertime)
+  const fullEventActive = !!timer.countFullEventOvertime && pastEnd && timer.scheduleCostPerMinute > 0
   const timerActive = counting
     && (mode === 'timer' || mode === 'both')
     && timer.allowNegative.timer
@@ -154,18 +194,21 @@ export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolea
     && running === timer.running
     && !scheduleActive
     && !timerActive
+    && !fullEventActive
   ) return timer
   const schedule = accrueOvertime(timer.scheduleOvertimeElapsed, scheduleActive, timer.scheduleCostPerMinute, interval)
   const countdown = accrueOvertime(timer.timerOvertimeElapsed, timerActive, timer.timerCostPerMinute, interval)
   const parts = splitOvertimeCost(timer)
-  const cost = packCost(parts.banked + schedule.add, parts.session + countdown.add, countdown.elapsed)
-  return {
+  return presentCost({
     ...timer,
     remaining,
     running,
     scheduleOvertimeElapsed: schedule.elapsed,
-    ...cost
-  }
+    overtimeCostBanked: parts.banked,
+    sessionOvertimeCost: parts.session + countdown.add,
+    timerOvertimeElapsed: countdown.elapsed,
+    scheduleOvertimeCost: Math.max(0, (timer.scheduleOvertimeCost || 0) + schedule.add)
+  }, now)
 }
 
 export function clampCountdown(seconds: number, allowNegative: boolean): number {

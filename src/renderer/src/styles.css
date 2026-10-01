@@ -415,6 +415,14 @@ button:disabled {
 .segmented.three { grid-template-columns: repeat(3, 1fr); }
 .segmented.stack { grid-template-columns: 1fr; }
 
+.segmented.stack button {
+  height: auto;
+  min-height: 38px;
+  padding: 8px 10px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
 .tab-bar button,
 .segmented button,
 .visibility-grid button {
@@ -616,6 +624,14 @@ input[type="time"] {
 .visibility-grid button.active {
   border-color: #1fbf76;
   background: #12261c;
+}
+
+.visibility-grid.stack button {
+  height: auto;
+  min-height: 42px;
+  padding: 8px 12px;
+  line-height: 1.25;
+  white-space: normal;
 }
 
 .visibility-grid button.active i { background: #3dde8f; }

@@ -22,7 +22,9 @@ import appIcon from './assets/app-icon.png'
 import { EventTimerScene } from './EventTimerScene'
 import {
   advanceTimer,
+  captureFullEventCredit,
   commitTimerSession,
+  presentCost,
   retargetTimerCost,
   consumeCue,
   digitPhase,
@@ -559,6 +561,8 @@ export function TimerControl(): JSX.Element {
   const savedPayload = useRef('')
   const timerRef = useRef(timer)
   const liveRef = useRef(liveTimer)
+  const advanceTimerRef = useRef(advanceTimer)
+  advanceTimerRef.current = advanceTimer
   const soundUrlsRef = useRef(soundUrls)
   const cueRef = useRef<Record<CountdownMode, CueState>>({
     timer: seedCue(null),
@@ -692,9 +696,9 @@ export function TimerControl(): JSX.Element {
       const tickNow = new Date()
       const before = timerRef.current
       const liveBefore = liveRef.current
-      const next = advanceTimer(before, tickNow, before.running)
+      const next = advanceTimerRef.current(before, tickNow, before.running)
       if (next !== before) setTimer(next)
-      const liveNext = liveBefore ? advanceTimer(liveBefore, tickNow, liveBefore.running) : null
+      const liveNext = liveBefore ? advanceTimerRef.current(liveBefore, tickNow, liveBefore.running) : null
       if (liveBefore && liveNext && liveNext !== liveBefore) setLiveTimer(liveNext)
       const source = liveNext ?? next
       const sourceBefore = liveBefore ?? before
@@ -805,8 +809,10 @@ export function TimerControl(): JSX.Element {
   ): void => {
     const apply = (current: TimerState): TimerState => {
       const base = options?.commitSession ? { ...current, ...commitTimerSession(current) } : current
-      if (update.remaining == null || update.remaining === base.remaining) return { ...base, ...update }
-      return { ...base, ...update, ...retargetTimerCost(base, update.remaining) }
+      const next = update.remaining == null || update.remaining === base.remaining
+        ? { ...base, ...update }
+        : { ...base, ...update, ...retargetTimerCost(base, update.remaining) }
+      return presentCost(next, new Date())
     }
     setTimer(apply)
     if (isLive && liveControl) {
@@ -1031,13 +1037,59 @@ export function TimerControl(): JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [isLive, liveControl, timer.running])
 
-  const setOvertimeMode = (overtimeMode: TimerState['overtimeMode']): void => {
-    setTimer((current) => ({ ...current, overtimeMode, scheduleOvertimeElapsed: 0, timerOvertimeElapsed: 0 }))
-    if (isLive) {
-      setLiveTimer((current) => current
-        ? { ...current, overtimeMode, scheduleOvertimeElapsed: 0, timerOvertimeElapsed: 0 }
-        : current)
+  const applyOvertimeMode = (current: TimerState, overtimeMode: TimerState['overtimeMode']): TimerState => {
+    const enteringSchedule = overtimeMode === 'schedule' && current.overtimeMode !== 'schedule'
+    const enteringBothFromTimer = overtimeMode === 'both' && current.overtimeMode === 'timer'
+    const now = new Date()
+    const next = {
+      ...current,
+      overtimeMode,
+      scheduleOvertimeElapsed: 0,
+      timerOvertimeElapsed: 0,
+      scheduleOvertimeCost: enteringSchedule || enteringBothFromTimer ? 0 : (current.scheduleOvertimeCost || 0)
     }
+    if (next.countFullEventOvertime && (enteringSchedule || enteringBothFromTimer)) {
+      next.fullEventOvertimeCredit = captureFullEventCredit(next, now)
+    }
+    return presentCost(next, now)
+  }
+
+  const setOvertimeMode = (overtimeMode: TimerState['overtimeMode']): void => {
+    setTimer((current) => applyOvertimeMode(current, overtimeMode))
+    if (isLive) setLiveTimer((current) => current ? applyOvertimeMode(current, overtimeMode) : current)
+  }
+
+  const toggleFullEventOvertime = (): void => {
+    const apply = (current: TimerState): TimerState => {
+      const now = new Date()
+      const turningOn = !current.countFullEventOvertime
+      return presentCost({
+        ...current,
+        countFullEventOvertime: turningOn,
+        fullEventOvertimeCredit: turningOn ? captureFullEventCredit(current, now) : 0
+      }, now)
+    }
+    setTimer(apply)
+    if (isLive) setLiveTimer((current) => current ? apply(current) : current)
+  }
+
+  const resetOvertimeTotal = (): void => {
+    const apply = (current: TimerState): TimerState => presentCost({
+      ...current,
+      overtimeCostBanked: 0,
+      sessionOvertimeCost: 0,
+      scheduleOvertimeCost: 0,
+      scheduleOvertimeElapsed: 0,
+      timerOvertimeElapsed: 0,
+      fullEventOvertimeCredit: current.countFullEventOvertime ? captureFullEventCredit({
+        ...current,
+        overtimeCostBanked: 0,
+        sessionOvertimeCost: 0,
+        scheduleOvertimeCost: 0
+      }, new Date()) : 0
+    }, new Date())
+    setTimer(apply)
+    if (isLive) setLiveTimer((current) => current ? apply(current) : current)
   }
 
   const displayRows = useMemo(() => displays.map((display, index) => ({
@@ -1475,7 +1527,7 @@ export function TimerControl(): JSX.Element {
                 >
                   <span className="card-title">Стоимость</span>
                   <span className="card-toggle-meta">
-                    {timer.overtimeMode === 'timer' ? 'Таймер' : timer.overtimeMode === 'both' ? 'Таймер и время' : 'По времени'}
+                    {timer.overtimeMode === 'timer' ? 'Таймер' : timer.overtimeMode === 'both' ? 'Таймер + время' : 'Время мероприятия'}
                   </span>
                   <span className={`card-chevron ${costOpen ? 'is-open' : ''}`} aria-hidden="true" />
                 </button>
@@ -1531,12 +1583,20 @@ export function TimerControl(): JSX.Element {
                 <div className="field">
                   <span>Считать</span>
                   <div className="segmented stack">
-                    <button className={timer.overtimeMode === 'schedule' ? 'active' : ''} onClick={() => setOvertimeMode('schedule')}>По времени</button>
+                    <button className={timer.overtimeMode === 'schedule' ? 'active' : ''} onClick={() => setOvertimeMode('schedule')}>Время перелимита мероприятия</button>
                     <button className={timer.overtimeMode === 'timer' ? 'active' : ''} onClick={() => setOvertimeMode('timer')}>Таймер</button>
-                    <button className={timer.overtimeMode === 'both' ? 'active' : ''} onClick={() => setOvertimeMode('both')}>Считать таймер и время</button>
+                    <button className={timer.overtimeMode === 'both' ? 'active' : ''} onClick={() => setOvertimeMode('both')}>Таймер + время перелимита мероприятия</button>
                   </div>
                 </div>
-                <button className="danger-ghost" onClick={() => updateDraft({ overtimeCostTotal: 0, overtimeCostBanked: 0, sessionOvertimeCost: 0, timerOvertimeElapsed: 0, scheduleOvertimeElapsed: 0 })}>Сбросить итог</button>
+                <div className="visibility-grid stack">
+                  <button
+                    className={timer.countFullEventOvertime ? 'active' : ''}
+                    onClick={toggleFullEventOvertime}
+                  >
+                    <i />Учитывать перелимит всего мероприятия
+                  </button>
+                </div>
+                <button className="danger-ghost" onClick={resetOvertimeTotal}>Сбросить итог</button>
                 </>}
               </div>
 

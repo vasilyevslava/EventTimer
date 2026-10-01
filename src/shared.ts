@@ -62,6 +62,9 @@ export interface TimerState {
   overtimeCostTotal: number
   overtimeCostBanked: number
   sessionOvertimeCost: number
+  scheduleOvertimeCost: number
+  countFullEventOvertime: boolean
+  fullEventOvertimeCredit: number
   scheduleOvertimeElapsed: number
   timerOvertimeElapsed: number
   overtimeIntervalSeconds: number

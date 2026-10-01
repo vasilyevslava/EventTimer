@@ -1,6 +1,6 @@
 # EventTimer — передача проекта другой нейронке
 
-Прочитай этот файл целиком, прежде чем менять код. Это операторский таймер мероприятия: Electron-приложение, панель управления и полноэкранная сцена 16:9. Продуктовое описание для людей лежит в `PRODUCT.md`. Версия в `package.json`: **1.3.1**.
+Прочитай этот файл целиком, прежде чем менять код. Это операторский таймер мероприятия: Electron-приложение, панель управления и полноэкранная сцена 16:9. Продуктовое описание для людей лежит в `PRODUCT.md`. Версия в `package.json`: **1.3.2**.
 
 Репозиторий, куда можно пушить: `https://github.com/vasilyevslava/EventTimer.git`, ветка `main`.  
 Не пушь в `https://github.com/mirslava88/timer-plus`. Не переименовывай локальную папку проекта. Не трогай `git config`.
@@ -89,17 +89,19 @@ npm run dev
 
 ## Деньги перелимита
 
-На экране одна цифра: `overtimeCostTotal = overtimeCostBanked + sessionOvertimeCost`.
+На экране одна цифра: `overtimeCostTotal`. Её собирает `presentCost`: bank + session + живой счётчик + кредит.
 
-- `overtimeCostBanked` — уже записанные перелимиты таймера и все начисления «по времени мероприятия».
+- `overtimeCostBanked` — уже записанные перелимиты таймера. Секунды мероприятия сюда не пишутся.
 - `sessionOvertimeCost` — деньги только текущего запуска таймера.
+- `scheduleOvertimeCost` — живой счётчик времени мероприятия с момента выбора режима.
+- `fullEventOvertimeCredit` — добавка кнопки «Учитывать перелимит всего мероприятия».
 - `scheduleOvertimeElapsed` и `timerOvertimeElapsed` — хвост внутри интервала «Обновлять, сек», ещё не превращённый в деньги.
 
-Режимы `overtimeMode`: `schedule`, `timer`, `both`. Ставки: `scheduleCostPerMinute`, `timerCostPerMinute`. Начисление идёт только пока `timer.running`.
+Режимы `overtimeMode`: `schedule` («Время перелимита мероприятия»), `timer` («Таймер»), `both` («Таймер + время перелимита мероприятия»). Ставки: `scheduleCostPerMinute`, `timerCostPerMinute`. Деньги таймера капают только пока `timer.running` и отсчёт в минусе. Деньги времени мероприятия капают после `endTime`, даже если таймер на паузе. `countFullEventOvertime` по нажатию записывает в `fullEventOvertimeCredit` перелимит мероприятия, которого ещё нет в живом счётчике. Следующий тик увеличивает только `scheduleOvertimeCost` и не пересчитывает кредит. Повторное нажатие обнуляет кредит и вычитает ту же сумму.
 
-`advanceTimer` прибавляет время мероприятия в bank, а таймер — в session. `retargetTimerCost` (кнопки ±минут) переписывает только session по новому `remaining`. Bank не трогает. `commitTimerSession` складывает session в bank и обнуляет session.
+`advanceTimer` прибавляет время мероприятия в `scheduleOvertimeCost`, а таймер — в session, затем вызывает `presentCost`. `retargetTimerCost` (кнопки ±минут) переписывает только session по новому `remaining`. Bank не трогает. `commitTimerSession` складывает session в bank и обнуляет session. После `retargetTimerCost` и `commitTimerSession` снова нужен `presentCost`, иначе из итога пропадут живой счётчик и кредит.
 
-Сессия закрывается на стопе, рефреше и когда оператор вводит другую длительность (`commitSession: true`). Пауза и плей сессию не закрывают. «Сбросить итог» обнуляет bank, session, total и оба elapsed. Больше ничто не обнуляет итог.
+Сессия закрывается на стопе, рефреше и когда оператор вводит другую длительность (`commitSession: true`). Пауза и плей сессию не закрывают. «Сбросить итог» обнуляет bank, session, живой счётчик и оба elapsed. Если кнопка всего мероприятия ещё включена, кредит записывается заново. Больше ничто не обнуляет итог.
 
 Старый JSON без bank/session режется в `splitOvertimeCost` и `initialOvertimeCost`: текущий отрицательный остаток считается session, остаток суммы — bank.
 

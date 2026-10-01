@@ -2,7 +2,7 @@
 
 Самостоятельное приложение таймера мероприятия для Windows и macOS. Оно создано отдельно от Presentation Display Manager, не требует установленного PDM и может выводить одну сцену сразу на несколько экранов.
 
-Версия: **1.3.1** · Electron **43.3.0** · Windows 10/11 x64 · macOS Intel / Apple Silicon / Catalina
+Версия: **1.3.2** · Electron **43.3.0** · Windows 10/11 x64 · macOS Intel / Apple Silicon / Catalina
 
 **[Скачать готовые дистрибутивы для Windows и macOS](https://github.com/vasilyevslava/EventTimer/releases/latest)**
 
@@ -29,7 +29,7 @@
 
 ### Windows
 
-1. Скачайте `EventTimer-1.3.1-Windows.exe` из раздела [Releases](https://github.com/vasilyevslava/EventTimer/releases/latest) или запустите локальный файл из папки `dist`.
+1. Скачайте `EventTimer-1.3.2-Windows.exe` из раздела [Releases](https://github.com/vasilyevslava/EventTimer/releases/latest) или запустите локальный файл из папки `dist`.
 2. Выберите папку установки и завершите работу мастера.
 3. Откройте **EventTimer** через ярлык на рабочем столе или меню «Пуск».
 
