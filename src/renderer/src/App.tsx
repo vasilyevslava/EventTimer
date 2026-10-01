@@ -36,6 +36,13 @@ import type { CueSlot, CueState } from './timer-utils'
 type TimePart = 'hours' | 'minutes' | 'seconds'
 type TimeParts = Record<TimePart, string>
 
+const expandedLayoutFlag = '__eventTimerExpanded'
+const expandedLayoutRoot = globalThis as typeof globalThis & { [expandedLayoutFlag]?: boolean }
+if (!expandedLayoutRoot[expandedLayoutFlag]) {
+  expandedLayoutRoot[expandedLayoutFlag] = true
+  void window.timerPlus.setLayout('expanded')
+}
+
 const modeOptions: Array<[TimerCentralMode, string]> = [
   ['current', 'Время'],
   ['timer', 'Таймер'],
@@ -496,6 +503,8 @@ function cloneTimer(timer: TimerState): TimerState {
     visibility: { ...timer.visibility },
     allowNegative: { ...timer.allowNegative },
     warning: { ...timer.warning },
+    blink: { ...(timer.blink ?? DEFAULT_TIMER.blink) },
+    blinkSeconds: { ...(timer.blinkSeconds ?? DEFAULT_TIMER.blinkSeconds) },
     textStyles: {
       clock: { ...timer.textStyles.clock },
       date: { ...(timer.textStyles.date ?? { scale: 1, weight: 300, family: 'sb-sans', italic: false }) },
@@ -531,9 +540,7 @@ export function TimerControl(): JSX.Element {
   const [editingTime, setEditingTime] = useState(false)
   const [timePartsDirty, setTimePartsDirty] = useState(false)
   const [timeParts, setTimeParts] = useState<TimeParts>(() => timePartsFromSeconds(DEFAULT_TIMER.remaining))
-  const [expanded, setExpanded] = useState(true)
-  const [textEditing, setTextEditing] = useState(false)
-  const [layoutEditing, setLayoutEditing] = useState(false)
+  const [screenEditing, setScreenEditing] = useState(false)
   const [openSlot, setOpenSlot] = useState<SceneSlot | null>(null)
   const [selectedText, setSelectedText] = useState<SceneTextKey | null>(null)
   const [presets, setPresets] = useState<ScreenPreset[]>(() => (
@@ -541,8 +548,13 @@ export function TimerControl(): JSX.Element {
   ))
   const [presetNote, setPresetNote] = useState('')
   const [presetsOpen, setPresetsOpen] = useState(false)
+  const [displayOpen, setDisplayOpen] = useState(true)
+  const [soundsOpen, setSoundsOpen] = useState(false)
+  const [costOpen, setCostOpen] = useState(false)
+  const [lookOpen, setLookOpen] = useState(false)
   const [soundUrls, setSoundUrls] = useState<{ warning: string | null; finish: string | null }>({ warning: null, finish: null })
   const [soundMessage, setSoundMessage] = useState('')
+  const elementEditorRef = useRef<HTMLDivElement>(null)
   const savedPayload = useRef('')
   const timerRef = useRef(timer)
   const liveRef = useRef(liveTimer)
@@ -744,6 +756,7 @@ export function TimerControl(): JSX.Element {
       setStatus(note)
       return
     }
+    pauseIfTimerHidden(config.centralTimeMode)
     updateDraft(screenConfigFromTimer({ ...timer, ...config }))
     const note = `${presets[index]?.name.trim() || `Пресет ${index + 1}`} загружен`
     setPresetNote(note)
@@ -777,15 +790,28 @@ export function TimerControl(): JSX.Element {
       visibility: update.visibility ? { ...current.visibility, ...update.visibility } : current.visibility,
       allowNegative: update.allowNegative ? { ...current.allowNegative, ...update.allowNegative } : current.allowNegative,
       warning: update.warning ? { ...current.warning, ...update.warning } : current.warning,
+      blink: update.blink ? { ...(current.blink ?? DEFAULT_TIMER.blink), ...update.blink } : current.blink,
+      blinkSeconds: update.blinkSeconds
+        ? { ...(current.blinkSeconds ?? DEFAULT_TIMER.blinkSeconds), ...update.blinkSeconds }
+        : current.blinkSeconds,
       textStyles: update.textStyles ? { ...current.textStyles, ...update.textStyles } : current.textStyles
     }))
     if (isLive) setDirty(true)
   }
 
   const updateTimerControl = (
-    update: Partial<Pick<TimerState, 'duration' | 'remaining' | 'running'>>
+    update: Partial<Pick<TimerState, 'duration' | 'remaining' | 'running'>>,
+    options?: { keepCost?: boolean }
   ): void => {
     const apply = (current: TimerState): TimerState => {
+      if (options?.keepCost) {
+        return {
+          ...current,
+          ...update,
+          overtimeCostTotal: current.overtimeCostTotal,
+          timerOvertimeElapsed: 0
+        }
+      }
       if (update.remaining == null || update.remaining === current.remaining) return { ...current, ...update }
       const cost = retargetTimerCost(current, update.remaining)
       return {
@@ -839,13 +865,9 @@ export function TimerControl(): JSX.Element {
   }
 
   useEffect(() => {
-    if (!expanded) {
-      setTextEditing(false)
-      setSelectedText(null)
-      setLayoutEditing(false)
-      setOpenSlot(null)
-    }
-  }, [expanded])
+    if (!screenEditing || !selectedText) return
+    elementEditorRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [screenEditing, selectedText])
 
   const setTextStyle = (key: SceneTextKey, patch: Partial<TimerState['textStyles'][SceneTextKey]>): void => {
     updateDraft({
@@ -899,7 +921,13 @@ export function TimerControl(): JSX.Element {
     setOpenSlot(null)
   }
 
+  const pauseIfTimerHidden = (mode: TimerCentralMode): void => {
+    if (mode === 'timer' || !timerRef.current.running) return
+    updateTimerControl({ running: false })
+  }
+
   const selectMode = (mode: TimerCentralMode): void => {
+    pauseIfTimerHidden(mode)
     updateDraft({ centralTimeMode: mode })
   }
 
@@ -1024,12 +1052,6 @@ export function TimerControl(): JSX.Element {
     name: displayName(display, index)
   })), [displays])
 
-  const toggleLayout = (): void => {
-    const next = !expanded
-    setExpanded(next)
-    void window.timerPlus.setLayout(next ? 'expanded' : 'compact')
-  }
-
   const syncLabel = !isLive ? 'Не в эфире' : dirty ? 'Есть изменения' : 'Синхронно с эфиром'
   const footerStatus = !isLive ? 'Эфир не запущен' : dirty ? 'Нужно обновить эфир' : 'Эфир актуален'
   const lookMode = timer.backgroundImage ? 'image' : timer.backgroundMode
@@ -1077,7 +1099,7 @@ export function TimerControl(): JSX.Element {
         <div className="transport">
           <button className="pause" title="Пауза" onClick={() => updateTimerControl({ running: false })}>Ⅱ</button>
           <button className={`play ${timer.running ? 'active' : ''}`} title="Старт" onClick={() => updateTimerControl({ running: true })}>▶</button>
-          <button className="stop" title="Стоп и сброс" onClick={() => updateTimerControl({ running: false, remaining: timer.duration })}>■</button>
+          <button className="stop" title="Стоп и сброс" onClick={() => updateTimerControl({ running: false, remaining: timer.duration }, { keepCost: true })}>■</button>
           <button className="refresh" title="Запустить заново с набранного времени" aria-label="Рефреш" onClick={restartTimer}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -1116,11 +1138,7 @@ export function TimerControl(): JSX.Element {
   }
 
   return (
-    <main
-      className={`control-app ${expanded ? '' : 'compact-app'}`}
-      data-layout={expanded ? 'expanded' : 'compact'}
-      style={colorVars}
-    >
+    <main className="control-app" data-layout="expanded" style={colorVars}>
       <header className="app-header">
         <div className="brand">
           <div className="brand-icon" aria-hidden="true">
@@ -1155,9 +1173,6 @@ export function TimerControl(): JSX.Element {
           </div>
         </div>
         <div className="header-side">
-          <button className="layout-toggle" onClick={toggleLayout}>
-            {expanded ? 'Маленький вид' : 'Полный вид'}
-          </button>
           <div className={`live-badge ${isLive ? 'on' : ''}`}>
             <span />{isLive ? `В эфире · ${screensLabel(selectedDisplayIds.length)}` : 'Не в эфире'}
           </div>
@@ -1170,63 +1185,161 @@ export function TimerControl(): JSX.Element {
             <span>Превью эфира</span>
             <span className={isLive && !dirty ? 'sync on' : 'sync'}>{syncLabel}</span>
           </div>
-          <div className={`preview-frame ${textEditing ? 'editing' : ''}`}>
+          <div className={`preview-frame ${screenEditing ? 'editing' : ''}`}>
             <EventTimerScene
               timer={timer}
-              textEditing={textEditing}
-              selectedText={textEditing ? selectedText : null}
-              onSelectText={textEditing ? setSelectedText : undefined}
+              textEditing={screenEditing}
+              selectedText={screenEditing ? selectedText : null}
+              onSelectText={screenEditing ? setSelectedText : undefined}
             />
           </div>
           {timerDeck}
         </section>
 
-        {expanded && (
           <aside className="panel settings-column">
             <div className="settings-stack">
-              <div className={`settings-card ${presetsOpen ? '' : 'is-collapsed'}`}>
+              <div className={`settings-card ${displayOpen ? '' : 'is-collapsed'}`}>
                 <button
                   type="button"
                   className="card-toggle"
-                  aria-expanded={presetsOpen}
-                  onClick={() => setPresetsOpen((open) => !open)}
+                  aria-expanded={displayOpen}
+                  onClick={() => {
+                    setDisplayOpen((open) => {
+                      if (open) {
+                        setScreenEditing(false)
+                        setSelectedText(null)
+                        setOpenSlot(null)
+                      }
+                      return !open
+                    })
+                  }}
                 >
-                  <span className="card-title">Пресеты</span>
+                  <span className="card-title">Редактировать отображение</span>
                   <span className="card-toggle-meta">
-                    {presets.filter((preset) => preset.config).length} из {PRESET_SLOT_COUNT}
+                    {modeOptions.find(([mode]) => mode === timer.centralTimeMode)?.[1]}
                   </span>
-                  <span className={`card-chevron ${presetsOpen ? 'is-open' : ''}`} aria-hidden="true" />
+                  <span className={`card-chevron ${displayOpen ? 'is-open' : ''}`} aria-hidden="true" />
                 </button>
-                {presetsOpen && (
-                  <>
-                    <p className="text-edit-hint">Нажмите слот, чтобы загрузить экран. Удерживайте его или нажмите «Сохранить», чтобы записать текущую конфигурацию. Таймер и сумма перелимита не меняются.</p>
-                    {presetNote && <p className="text-edit-hint">{presetNote}</p>}
-                    {presets.map((preset, index) => (
-                      <PresetSlot
-                        key={index}
-                        index={index}
-                    filled={preset.config != null}
-                    label={preset.name.trim() || preset.config?.eventName.trim() || 'Пусто'}
-                    onLoad={() => loadPreset(index)}
-                    onSave={() => savePreset(index)}
-                    onRename={(name) => renamePreset(index, name)}
-                    onDelete={() => deletePreset(index)}
-                      />
-                    ))}
-                  </>
-                )}
-              </div>
-              <button
-                className={`text-edit-toggle ${textEditing ? 'active' : ''}`}
-                onClick={() => {
-                  setTextEditing((value) => !value)
-                  setSelectedText(null)
-                }}
-              >
-                {textEditing ? 'Завершить редактирование' : 'Редактировать элементы'}
-              </button>
-              <div className="settings-card">
-                <p className="card-title">Блок на экране</p>
+                {displayOpen && <>
+                <button
+                  className={`text-edit-toggle ${screenEditing ? 'active' : ''}`}
+                  onClick={() => {
+                    setScreenEditing((value) => !value)
+                    setSelectedText(null)
+                    setOpenSlot(null)
+                  }}
+                >
+                  {screenEditing ? 'Завершить редактирование' : 'Редактировать отображение'}
+                </button>
+                {screenEditing && selectedText ? (
+                  <div className="element-editor" ref={elementEditorRef}>
+                    <p className="card-title">{TEXT_LABELS[selectedText]}</p>
+                    {selectedText === 'clock' && (
+                      <p className="text-edit-hint">Это время компьютера. Меняется само.</p>
+                    )}
+                    {selectedText === 'schedule' && (
+                      <div className="split-fields">
+                        <label>
+                          <span>Начало</span>
+                          <input type="time" value={timer.startTime} onChange={(event) => updateSchedule('startTime', event.target.value)} />
+                        </label>
+                        <label>
+                          <span>Конец</span>
+                          <input type="time" value={timer.endTime} onChange={(event) => updateSchedule('endTime', event.target.value)} />
+                        </label>
+                      </div>
+                    )}
+                    {selectedText === 'heading' && (
+                      <>
+                        <HeadingField
+                          label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
+                          value={timer.headings[timer.centralTimeMode]}
+                          onChange={(value) => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: value } })}
+                          onReset={() => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: defaultHeading(timer.centralTimeMode) } })}
+                        />
+                        {timer.centralTimeMode === 'to-start' && (
+                          <p className="text-edit-hint">После начала на экране будет «Мероприятие началось».</p>
+                        )}
+                      </>
+                    )}
+                    {selectedText === 'time' && (
+                      <>
+                        {!timer.visibility.heading && (
+                          <HeadingField
+                            label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
+                            value={timer.headings[timer.centralTimeMode]}
+                            onChange={(value) => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: value } })}
+                            onReset={() => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: defaultHeading(timer.centralTimeMode) } })}
+                          />
+                        )}
+                        <div className="look-grid">
+                          <label className="swatch">
+                            <span>Цвет предупреждения</span>
+                            <input type="color" value={timer.warningColor} onChange={(event) => updateDraft({ warningColor: event.target.value })} />
+                          </label>
+                          <label className="swatch">
+                            <span>Цвет минуса</span>
+                            <input type="color" value={timer.overtimeColor} onChange={(event) => updateDraft({ overtimeColor: event.target.value })} />
+                          </label>
+                        </div>
+                      </>
+                    )}
+                    {selectedText === 'event' && (
+                      <label>
+                        <span>Название мероприятия</span>
+                        <input
+                          value={timer.eventName}
+                          maxLength={120}
+                          onChange={(event) => updateDraft({ eventName: event.target.value })}
+                        />
+                      </label>
+                    )}
+                    {selectedText === 'remaining' && (
+                      <label>
+                        <span>Подпись до конца</span>
+                        <input
+                          value={timer.remainingLabel ?? 'До завершения'}
+                          maxLength={40}
+                          placeholder="До завершения"
+                          onChange={(event) => updateDraft({ remainingLabel: event.target.value })}
+                        />
+                      </label>
+                    )}
+                    {selectedText === 'cost' && (
+                      <>
+                        <label>
+                          <span>Подпись стоимости</span>
+                          <input
+                            value={timer.costLabel ?? 'Итого'}
+                            maxLength={40}
+                            placeholder="Итого"
+                            onChange={(event) => updateDraft({ costLabel: event.target.value })}
+                          />
+                        </label>
+                        <p className="text-edit-hint">Ставки и что считать — в блоке «Стоимость» ниже.</p>
+                      </>
+                    )}
+                    <BlockTextStyle
+                      scale={timer.textStyles[selectedText]?.scale ?? 1}
+                      weight={timer.textStyles[selectedText]?.weight ?? 300}
+                      family={timer.textStyles[selectedText]?.family ?? 'sb-sans'}
+                      italic={timer.textStyles[selectedText]?.italic ?? false}
+                      onScale={(scale) => setTextStyle(selectedText, { scale })}
+                      onWeight={(weight) => setTextStyle(selectedText, { weight })}
+                      onFamily={(family) => {
+                        const spec = sceneFont(family)
+                        const current = timer.textStyles[selectedText]
+                        setTextStyle(selectedText, {
+                          family,
+                          italic: spec.italic && Boolean(current?.italic),
+                          weight: nearestFontWeight(current?.weight ?? 300, spec.weights)
+                        })
+                      }}
+                      onItalic={(italic) => setTextStyle(selectedText, { italic })}
+                      onReset={() => setTextStyle(selectedText, { scale: 1, weight: 300, family: 'sb-sans', italic: false })}
+                    />
+                  </div>
+                ) : null}
                 <p className="section-label">Что показывают часы</p>
                 <div className="segmented mode-grid">
                   {modeOptions.map(([mode, label]) => (
@@ -1237,7 +1350,7 @@ export function TimerControl(): JSX.Element {
                     >{label}</button>
                   ))}
                 </div>
-                {textEditing && activeCountdown && (
+                {activeCountdown && (
                   <div className="visibility-grid">
                     <button
                       className={timer.allowNegative[activeCountdown[0]] ? 'active' : ''}
@@ -1253,139 +1366,44 @@ export function TimerControl(): JSX.Element {
                     </button>
                   </div>
                 )}
-                {!selectedText && (
-                  <p className="text-edit-hint">
-                    {textEditing
-                      ? 'Нажмите на превью: часы, начало и конец, заголовок, цифры, название или подпись внизу. Пустое место снимает выбор.'
-                      : 'Включите «Редактировать элементы», затем нажмите блок на превью.'}
-                  </p>
+                {activeCountdown && (
+                  <div className="blink-row">
+                    <button
+                      className={(timer.blink ?? DEFAULT_TIMER.blink)[activeCountdown[0]] ? 'active' : ''}
+                      onClick={() => {
+                        const mode = activeCountdown[0]
+                        const blink = { ...(timer.blink ?? DEFAULT_TIMER.blink) }
+                        updateDraft({ blink: { ...blink, [mode]: !blink[mode] } })
+                      }}
+                    >
+                      <i />Мигание
+                    </button>
+                    <label>
+                      <span>Секунд до нуля</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={3600}
+                        value={(timer.blinkSeconds ?? DEFAULT_TIMER.blinkSeconds)[activeCountdown[0]]}
+                        onChange={(event) => {
+                          const parsed = Number(event.target.value)
+                          if (!Number.isFinite(parsed)) return
+                          const mode = activeCountdown[0]
+                          updateDraft({
+                            blinkSeconds: {
+                              ...(timer.blinkSeconds ?? DEFAULT_TIMER.blinkSeconds),
+                              [mode]: Math.min(3600, Math.max(1, Math.round(parsed)))
+                            }
+                          })
+                        }}
+                      />
+                    </label>
+                  </div>
                 )}
-              </div>
-              {selectedText ? (
-                <div className="settings-card">
-                  <p className="card-title">{TEXT_LABELS[selectedText]}</p>
-                  {selectedText === 'clock' && (
-                    <p className="text-edit-hint">Это время компьютера. Меняется само.</p>
-                  )}
-                  {selectedText === 'schedule' && (
-                    <div className="split-fields">
-                      <label>
-                        <span>Начало</span>
-                        <input type="time" value={timer.startTime} onChange={(event) => updateSchedule('startTime', event.target.value)} />
-                      </label>
-                      <label>
-                        <span>Конец</span>
-                        <input type="time" value={timer.endTime} onChange={(event) => updateSchedule('endTime', event.target.value)} />
-                      </label>
-                    </div>
-                  )}
-                  {selectedText === 'heading' && (
-                    <>
-                      <HeadingField
-                        label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
-                        value={timer.headings[timer.centralTimeMode]}
-                        onChange={(value) => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: value } })}
-                        onReset={() => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: defaultHeading(timer.centralTimeMode) } })}
-                      />
-                      {timer.centralTimeMode === 'to-start' && (
-                        <p className="text-edit-hint">После начала на экране будет «Мероприятие началось».</p>
-                      )}
-                    </>
-                  )}
-                  {selectedText === 'time' && (
-                    <>
-                      {!timer.visibility.heading && (
-                        <HeadingField
-                          label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
-                          value={timer.headings[timer.centralTimeMode]}
-                          onChange={(value) => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: value } })}
-                          onReset={() => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: defaultHeading(timer.centralTimeMode) } })}
-                        />
-                      )}
-                      <div className="look-grid">
-                        <label className="swatch">
-                          <span>Цвет предупреждения</span>
-                          <input type="color" value={timer.warningColor} onChange={(event) => updateDraft({ warningColor: event.target.value })} />
-                        </label>
-                        <label className="swatch">
-                          <span>Цвет минуса</span>
-                          <input type="color" value={timer.overtimeColor} onChange={(event) => updateDraft({ overtimeColor: event.target.value })} />
-                        </label>
-                      </div>
-                    </>
-                  )}
-                  {selectedText === 'event' && (
-                    <label>
-                      <span>Название мероприятия</span>
-                      <input
-                        value={timer.eventName}
-                        maxLength={120}
-                        onChange={(event) => updateDraft({ eventName: event.target.value })}
-                      />
-                    </label>
-                  )}
-                  {selectedText === 'remaining' && (
-                    <label>
-                      <span>Подпись до конца</span>
-                      <input
-                        value={timer.remainingLabel ?? 'До завершения'}
-                        maxLength={40}
-                        placeholder="До завершения"
-                        onChange={(event) => updateDraft({ remainingLabel: event.target.value })}
-                      />
-                    </label>
-                  )}
-                  {selectedText === 'cost' && (
-                    <>
-                      <label>
-                        <span>Подпись стоимости</span>
-                        <input
-                          value={timer.costLabel ?? 'Итого'}
-                          maxLength={40}
-                          placeholder="Итого"
-                          onChange={(event) => updateDraft({ costLabel: event.target.value })}
-                        />
-                      </label>
-                      <p className="text-edit-hint">Ставки и что считать — в блоке «Стоимость» ниже.</p>
-                    </>
-                  )}
-                  <BlockTextStyle
-                    scale={timer.textStyles[selectedText]?.scale ?? 1}
-                    weight={timer.textStyles[selectedText]?.weight ?? 300}
-                    family={timer.textStyles[selectedText]?.family ?? 'sb-sans'}
-                    italic={timer.textStyles[selectedText]?.italic ?? false}
-                    onScale={(scale) => setTextStyle(selectedText, { scale })}
-                    onWeight={(weight) => setTextStyle(selectedText, { weight })}
-                    onFamily={(family) => {
-                      const spec = sceneFont(family)
-                      const current = timer.textStyles[selectedText]
-                      setTextStyle(selectedText, {
-                        family,
-                        italic: spec.italic && Boolean(current?.italic),
-                        weight: nearestFontWeight(current?.weight ?? 300, spec.weights)
-                      })
-                    }}
-                    onItalic={(italic) => setTextStyle(selectedText, { italic })}
-                    onReset={() => setTextStyle(selectedText, { scale: 1, weight: 300, family: 'sb-sans', italic: false })}
-                  />
-                </div>
-              ) : null}
-
-              <div className="settings-card">
-                <p className="card-title">Что показывать</p>
-                <button
-                  className={`text-edit-toggle ${layoutEditing ? 'active' : ''}`}
-                  onClick={() => {
-                    setLayoutEditing((value) => !value)
-                    setOpenSlot(null)
-                  }}
-                >
-                  {layoutEditing ? 'Завершить редактирование' : 'Редактировать отображение'}
-                </button>
                 <ShowMap
                   slots={timer.slots ?? DEFAULT_SCENE_SLOTS}
                   slotShown={timer.slotShown ?? DEFAULT_SLOT_SHOWN}
-                  layoutEditing={layoutEditing}
+                  layoutEditing={screenEditing}
                   openSlot={openSlot}
                   headingOn={timer.visibility.heading}
                   nameOn={timer.visibility.eventName}
@@ -1395,14 +1413,43 @@ export function TimerControl(): JSX.Element {
                   onToggle={(key) => updateDraft({ visibility: { ...timer.visibility, [key]: !timer.visibility[key] } })}
                 />
                 <p className="text-edit-hint">
-                  {layoutEditing
-                    ? 'Нажмите блок и выберите, что показывать.'
+                  {screenEditing
+                    ? 'Нажмите блок схемы и выберите, что показывать. На превью нажмите элемент, чтобы изменить текст и шрифт.'
                     : 'Нажмите блок, чтобы скрыть или показать его. Рамка значит, что он на экране.'}
                 </p>
+                <p className="section-label">Перелимит</p>
+                <div className="visibility-grid stack">
+                  <button
+                    className={timer.costOvertimeRed !== false ? 'active' : ''}
+                    onClick={() => updateDraft({ costOvertimeRed: timer.costOvertimeRed === false })}
+                  >
+                    <i />Деньги красным
+                  </button>
+                  <button
+                    className={timer.remainingOvertimeRed !== false ? 'active' : ''}
+                    onClick={() => updateDraft({ remainingOvertimeRed: timer.remainingOvertimeRed === false })}
+                  >
+                    <i />До завершения красным
+                  </button>
+                </div>
+                <p className="text-edit-hint">Деньги остаются красными, пока сумма не сброшена. До завершения краснеет целиком, пока мероприятие идёт после конца. Выключенная кнопка оставляет блок белым.</p>
+                </>}
               </div>
 
-              <div className="settings-card">
-                <p className="card-title">Звуки</p>
+              <div className={`settings-card ${soundsOpen ? '' : 'is-collapsed'}`}>
+                <button
+                  type="button"
+                  className="card-toggle"
+                  aria-expanded={soundsOpen}
+                  onClick={() => setSoundsOpen((open) => !open)}
+                >
+                  <span className="card-title">Звуки</span>
+                  <span className="card-toggle-meta">
+                    {[timer.warningSoundLabel, timer.finishSoundLabel].filter(Boolean).length} из 2
+                  </span>
+                  <span className={`card-chevron ${soundsOpen ? 'is-open' : ''}`} aria-hidden="true" />
+                </button>
+                {soundsOpen && <>
                 <SoundCard
                   title="За 1 минуту"
                   label={timer.warningSoundLabel}
@@ -1423,10 +1470,23 @@ export function TimerControl(): JSX.Element {
                 <p className="text-edit-hint">
                   Предупреждение включает цвет и звук за минуту до нуля. На нуле второй звук играет всегда, если файл загружен. Без «Уходить в минус» цифры останавливаются на 00:00:00.
                 </p>
+                </>}
               </div>
 
-              <div className="settings-card">
-                <p className="card-title">Стоимость</p>
+              <div className={`settings-card ${costOpen ? '' : 'is-collapsed'}`}>
+                <button
+                  type="button"
+                  className="card-toggle"
+                  aria-expanded={costOpen}
+                  onClick={() => setCostOpen((open) => !open)}
+                >
+                  <span className="card-title">Стоимость</span>
+                  <span className="card-toggle-meta">
+                    {timer.overtimeMode === 'timer' ? 'Таймер' : timer.overtimeMode === 'both' ? 'Таймер и время' : 'По времени'}
+                  </span>
+                  <span className={`card-chevron ${costOpen ? 'is-open' : ''}`} aria-hidden="true" />
+                </button>
+                {costOpen && <>
                 <label>
                   <span>Перелимит по времени мероприятия</span>
                   <input
@@ -1484,10 +1544,23 @@ export function TimerControl(): JSX.Element {
                   </div>
                 </div>
                 <button className="danger-ghost" onClick={() => updateDraft({ overtimeCostTotal: 0 })}>Сбросить итог</button>
+                </>}
               </div>
 
-              <div className="settings-card">
-                <p className="card-title">Вид</p>
+              <div className={`settings-card ${lookOpen ? '' : 'is-collapsed'}`}>
+                <button
+                  type="button"
+                  className="card-toggle"
+                  aria-expanded={lookOpen}
+                  onClick={() => setLookOpen((open) => !open)}
+                >
+                  <span className="card-title">Вид</span>
+                  <span className="card-toggle-meta">
+                    {lookMode === 'image' ? 'Картинка' : lookMode === 'solid' ? 'Цвет' : 'Градиент'}
+                  </span>
+                  <span className={`card-chevron ${lookOpen ? 'is-open' : ''}`} aria-hidden="true" />
+                </button>
+                {lookOpen && <>
                 <p className="section-label">Фон</p>
                 <div className="segmented three">
                   <button className={lookMode === 'image' ? 'active' : ''} onClick={() => void chooseBackgroundImage()}>Картинка</button>
@@ -1523,10 +1596,42 @@ export function TimerControl(): JSX.Element {
                   )}
                 </div>
                 <p className="text-edit-hint">Размер и толщина текста — в настройках выбранного блока.</p>
+                </>}
+              </div>
+              <div className={`settings-card ${presetsOpen ? '' : 'is-collapsed'}`}>
+                <button
+                  type="button"
+                  className="card-toggle"
+                  aria-expanded={presetsOpen}
+                  onClick={() => setPresetsOpen((open) => !open)}
+                >
+                  <span className="card-title">Пресеты</span>
+                  <span className="card-toggle-meta">
+                    {presets.filter((preset) => preset.config).length} из {PRESET_SLOT_COUNT}
+                  </span>
+                  <span className={`card-chevron ${presetsOpen ? 'is-open' : ''}`} aria-hidden="true" />
+                </button>
+                {presetsOpen && (
+                  <>
+                    <p className="text-edit-hint">Нажмите слот, чтобы загрузить экран. Удерживайте его или нажмите «Сохранить», чтобы записать текущую конфигурацию. Таймер и сумма перелимита не меняются.</p>
+                    {presetNote && <p className="text-edit-hint">{presetNote}</p>}
+                    {presets.map((preset, index) => (
+                      <PresetSlot
+                        key={index}
+                        index={index}
+                        filled={preset.config != null}
+                        label={preset.name.trim() || preset.config?.eventName.trim() || 'Пусто'}
+                        onLoad={() => loadPreset(index)}
+                        onSave={() => savePreset(index)}
+                        onRename={(name) => renamePreset(index, name)}
+                        onDelete={() => deletePreset(index)}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             </div>
           </aside>
-        )}
       </div>
 
       <footer className="air-bar">

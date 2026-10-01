@@ -1,5 +1,5 @@
 import { DEFAULT_SCENE_SLOTS, DEFAULT_SLOT_SHOWN, PRESET_SLOT_COUNT, SCENE_SLOT_ORDER } from '../../shared'
-import type { CountdownFlags, CountdownMode, OvertimeMode, SceneFontFamily, SceneSlotShown, SceneSlots, SceneTextStyle, SceneTextStyles, ScreenConfig, ScreenPreset, SlotContent, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
+import type { CountdownFlags, CountdownMode, CountdownSeconds, OvertimeMode, SceneFontFamily, SceneSlotShown, SceneSlots, SceneTextStyle, SceneTextStyles, ScreenConfig, ScreenPreset, SlotContent, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
 import { nearestFontWeight, sceneFont } from './fonts'
 
 export const DEFAULT_TIMER: TimerState = {
@@ -28,8 +28,12 @@ export const DEFAULT_TIMER: TimerState = {
   fontColor: '#ffffff',
   allowNegative: { timer: true, 'to-start': false, 'to-end': true },
   warning: { timer: false, 'to-start': false, 'to-end': false },
+  blink: { timer: true, 'to-start': false, 'to-end': true },
+  blinkSeconds: { timer: 5, 'to-start': 5, 'to-end': 5 },
   warningColor: '#ffd000',
   overtimeColor: '#ef1717',
+  costOvertimeRed: true,
+  remainingOvertimeRed: true,
   warningSoundFile: null,
   warningSoundLabel: null,
   finishSoundFile: null,
@@ -121,6 +125,15 @@ function countdownFlags(value: unknown, fallback: CountdownFlags): CountdownFlag
     if (typeof source[key] === 'boolean') flags[key] = source[key]
   }
   return flags
+}
+
+function countdownSeconds(value: unknown, fallback: CountdownSeconds): CountdownSeconds {
+  const source = record(value)
+  const seconds = { ...fallback }
+  for (const key of countdownModes) {
+    seconds[key] = Math.round(number(source[key], fallback[key], 1, 3600))
+  }
+  return seconds
 }
 
 function soundFile(value: unknown, slot: 'warning' | 'finish'): string | null {
@@ -217,8 +230,12 @@ function normalizeTimerState(
       fontColor: color(timerRaw.fontColor, DEFAULT_TIMER.fontColor),
       allowNegative: countdownFlags(timerRaw.allowNegative, DEFAULT_TIMER.allowNegative),
       warning: countdownFlags(timerRaw.warning, DEFAULT_TIMER.warning),
+      blink: countdownFlags(timerRaw.blink, DEFAULT_TIMER.blink),
+      blinkSeconds: countdownSeconds(timerRaw.blinkSeconds, DEFAULT_TIMER.blinkSeconds),
       warningColor: color(timerRaw.warningColor, DEFAULT_TIMER.warningColor),
       overtimeColor: color(timerRaw.overtimeColor, DEFAULT_TIMER.overtimeColor),
+      costOvertimeRed: timerRaw.costOvertimeRed !== false,
+      remainingOvertimeRed: timerRaw.remainingOvertimeRed !== false,
       warningSoundFile: soundFile(timerRaw.warningSoundFile, 'warning'),
       warningSoundLabel: soundLabel(timerRaw.warningSoundLabel),
       finishSoundFile: soundFile(timerRaw.finishSoundFile, 'finish'),
@@ -264,8 +281,12 @@ export function screenConfigFromTimer(timer: TimerState): ScreenConfig {
     fontColor: timer.fontColor,
     allowNegative: { ...timer.allowNegative },
     warning: { ...timer.warning },
+    blink: { ...(timer.blink ?? DEFAULT_TIMER.blink) },
+    blinkSeconds: { ...(timer.blinkSeconds ?? DEFAULT_TIMER.blinkSeconds) },
     warningColor: timer.warningColor,
     overtimeColor: timer.overtimeColor,
+    costOvertimeRed: timer.costOvertimeRed,
+    remainingOvertimeRed: timer.remainingOvertimeRed,
     warningSoundFile: timer.warningSoundFile,
     warningSoundLabel: timer.warningSoundLabel,
     finishSoundFile: timer.finishSoundFile,

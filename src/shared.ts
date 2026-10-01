@@ -1,6 +1,7 @@
 export type TimerCentralMode = 'current' | 'timer' | 'to-start' | 'to-end'
 export type CountdownMode = 'timer' | 'to-start' | 'to-end'
 export type CountdownFlags = Record<CountdownMode, boolean>
+export type CountdownSeconds = Record<CountdownMode, number>
 export type OvertimeMode = 'schedule' | 'timer' | 'both'
 export type SoundSlot = 'warning' | 'finish'
 export type TimerHeadings = Record<TimerCentralMode, string>
@@ -72,8 +73,12 @@ export interface TimerState {
   fontColor: string
   allowNegative: CountdownFlags
   warning: CountdownFlags
+  blink: CountdownFlags
+  blinkSeconds: CountdownSeconds
   warningColor: string
   overtimeColor: string
+  costOvertimeRed: boolean
+  remainingOvertimeRed: boolean
   warningSoundFile: string | null
   warningSoundLabel: string | null
   finishSoundFile: string | null
@@ -117,8 +122,12 @@ export interface ScreenConfig {
   fontColor: string
   allowNegative: CountdownFlags
   warning: CountdownFlags
+  blink: CountdownFlags
+  blinkSeconds: CountdownSeconds
   warningColor: string
   overtimeColor: string
+  costOvertimeRed: boolean
+  remainingOvertimeRed: boolean
   warningSoundFile: string | null
   warningSoundLabel: string | null
   finishSoundFile: string | null

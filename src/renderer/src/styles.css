@@ -169,21 +169,6 @@ button:disabled {
   gap: 10px;
 }
 
-.layout-toggle {
-  height: 36px;
-  padding: 0 14px;
-  border: 1px solid #315446;
-  border-radius: 999px;
-  color: #d7efe4;
-  background: #121a17;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.layout-toggle:hover {
-  border-color: #3dde8f;
-}
-
 .live-badge {
   display: flex;
   align-items: center;
@@ -603,6 +588,10 @@ input[type="time"] {
   gap: 8px;
 }
 
+.visibility-grid.stack {
+  grid-template-columns: 1fr;
+}
+
 .visibility-grid button {
   display: flex;
   align-items: center;
@@ -630,6 +619,41 @@ input[type="time"] {
 }
 
 .visibility-grid button.active i { background: #3dde8f; }
+
+.blink-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 8px;
+  align-items: end;
+}
+
+.blink-row > button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid #2c3834;
+  border-radius: 12px;
+  color: #d5e0db;
+  background: #101716;
+  text-align: left;
+}
+
+.blink-row > button i {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #3a4742;
+}
+
+.blink-row > button.active {
+  border-color: #1fbf76;
+  background: #12261c;
+}
+
+.blink-row > button.active i { background: #3dde8f; }
 
 .show-map {
   display: grid;
@@ -794,10 +818,6 @@ input[type="time"] {
   background: #d64545;
 }
 
-.compact-app .workspace {
-  grid-template-columns: minmax(0, 1fr);
-}
-
 @media (max-width: 1180px), (max-height: 760px) {
   .brand h1 { font-size: 18px; }
   .time-editor { font-size: 28px; }
@@ -909,6 +929,10 @@ input[type="time"] {
   color: var(--warning-color, #ffd000);
 }
 
+.scene-slot.is-overtime {
+  color: var(--overtime-color, #ef1717);
+}
+
 .scene-clock {
   position: absolute;
   left: 1.9cqw;
@@ -941,11 +965,11 @@ input[type="time"] {
   pointer-events: none;
 }
 
-.scene-heading.is-finishing {
-  animation: scene-heading-blink 1s linear infinite;
+.scene-time.is-finishing {
+  animation: scene-time-blink 1s linear infinite;
 }
 
-@keyframes scene-heading-blink {
+@keyframes scene-time-blink {
   0%, 49% { opacity: 1; }
   50%, 100% { opacity: 0; }
 }
@@ -1286,6 +1310,16 @@ input[type="time"] {
 }
 
 .settings-card .section-label { margin: 0; }
+
+.element-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #1fbf76;
+  border-radius: 12px;
+  background: #12261c;
+}
 
 .behavior-block > span {
   color: #f1f7f4;

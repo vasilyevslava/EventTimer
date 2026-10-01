@@ -71,10 +71,15 @@ export function EventTimerScene({
     : digitPhase(rawCentral, timer.allowNegative[centralMode], timer.warning[centralMode])
   const eventStarted = toStart?.started === true
   const heading = eventStarted ? EVENT_STARTED_HEADING : timer.headings[centralMode]
-  const finishing = (centralMode === 'timer' || centralMode === 'to-end')
+  const blinkMode = centralMode === 'timer' || centralMode === 'to-start' || centralMode === 'to-end'
+    ? centralMode
+    : null
+  const finishing = blinkMode != null
+    && (timer.blink?.[blinkMode] ?? blinkMode !== 'to-start')
     && centralSeconds != null
     && centralSeconds >= 0
-    && centralSeconds <= 5
+    && centralSeconds <= (timer.blinkSeconds?.[blinkMode] ?? 5)
+    && (centralSeconds > 0 || timer.allowNegative[blinkMode])
   const centralText = centralMode === 'current'
     ? currentClockWithSeconds(now)
     : formatTimer(centralSeconds ?? 0)
@@ -202,13 +207,17 @@ export function EventTimerScene({
     nodes.current[key] = node
   }
 
+  const costOvertimeRed = timer.costOvertimeRed !== false && timer.overtimeCostTotal > 0
+  const remainingOvertimeRed = timer.remainingOvertimeRed !== false && rawEnd < 0
+
   const renderSlot = (slot: SceneSlot, className: string): JSX.Element | null => {
     const content = slots[slot]
     if (content === 'empty' || slotShown[slot] === false) return null
+    const overtime = (content === 'cost' && costOvertimeRed) || (content === 'remaining' && remainingOvertimeRed)
     return (
       <div
         ref={bind(slot)}
-        className={hitClass(content, selectedText, `scene-slot ${className}`)}
+        className={hitClass(content, selectedText, `scene-slot ${className}${overtime ? ' is-overtime' : ''}`)}
         style={blockStyle(styles, content, placement, slot)}
         onClick={hit(content)}
       >
@@ -264,14 +273,14 @@ export function EventTimerScene({
           {timer.visibility.heading && (
             <div
               ref={bind('heading')}
-              className={hitClass('heading', selectedText, `scene-heading ${finishing ? 'is-finishing' : ''}`)}
+              className={hitClass('heading', selectedText, 'scene-heading')}
               style={blockStyle(styles, 'heading', placement, 'heading', 'heading')}
               onClick={hit('heading')}
             >{heading}</div>
           )}
           <div
             ref={bind('time')}
-            className={hitClass('time', selectedText, `scene-time ${phase === 'normal' ? '' : `is-${phase}`}`)}
+            className={hitClass('time', selectedText, `scene-time ${phase === 'normal' ? '' : `is-${phase}`} ${finishing ? 'is-finishing' : ''}`)}
             style={blockStyle(styles, 'time', placement, 'time', 'time')}
             onClick={hit('time')}
           >
