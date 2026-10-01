@@ -60,6 +60,8 @@ export interface TimerState {
   scheduleCostPerMinute: number
   timerCostPerMinute: number
   overtimeCostTotal: number
+  overtimeCostBanked: number
+  sessionOvertimeCost: number
   scheduleOvertimeElapsed: number
   timerOvertimeElapsed: number
   overtimeIntervalSeconds: number

@@ -22,6 +22,7 @@ import appIcon from './assets/app-icon.png'
 import { EventTimerScene } from './EventTimerScene'
 import {
   advanceTimer,
+  commitTimerSession,
   retargetTimerCost,
   consumeCue,
   digitPhase,
@@ -800,25 +801,12 @@ export function TimerControl(): JSX.Element {
 
   const updateTimerControl = (
     update: Partial<Pick<TimerState, 'duration' | 'remaining' | 'running'>>,
-    options?: { keepCost?: boolean }
+    options?: { commitSession?: boolean }
   ): void => {
     const apply = (current: TimerState): TimerState => {
-      if (options?.keepCost) {
-        return {
-          ...current,
-          ...update,
-          overtimeCostTotal: current.overtimeCostTotal,
-          timerOvertimeElapsed: 0
-        }
-      }
-      if (update.remaining == null || update.remaining === current.remaining) return { ...current, ...update }
-      const cost = retargetTimerCost(current, update.remaining)
-      return {
-        ...current,
-        ...update,
-        overtimeCostTotal: cost.overtimeCostTotal,
-        timerOvertimeElapsed: cost.timerOvertimeElapsed
-      }
+      const base = options?.commitSession ? { ...current, ...commitTimerSession(current) } : current
+      if (update.remaining == null || update.remaining === base.remaining) return { ...base, ...update }
+      return { ...base, ...update, ...retargetTimerCost(base, update.remaining) }
     }
     setTimer(apply)
     if (isLive && liveControl) {
@@ -941,9 +929,11 @@ export function TimerControl(): JSX.Element {
         [key]: { ...current[key], [mode]: enabled }
       }
       if (key === 'allowNegative' && mode === 'timer' && !enabled && current.remaining < 0) {
-        const cost = retargetTimerCost(current, 0)
+        const cost = commitTimerSession(current)
         next.remaining = 0
         next.running = false
+        next.overtimeCostBanked = cost.overtimeCostBanked
+        next.sessionOvertimeCost = cost.sessionOvertimeCost
         next.overtimeCostTotal = cost.overtimeCostTotal
         next.timerOvertimeElapsed = cost.timerOvertimeElapsed
       }
@@ -989,7 +979,10 @@ export function TimerControl(): JSX.Element {
       return
     }
     const seconds = secondsFromTimeParts(timeParts)
-    updateTimerControl({ duration: seconds, remaining: seconds, running: false })
+    updateTimerControl(
+      { duration: seconds, remaining: seconds, running: false },
+      seconds === timer.remaining ? undefined : { commitSession: true }
+    )
     setTimeParts(timePartsFromSeconds(seconds))
     setEditingTime(false)
     setTimePartsDirty(false)
@@ -997,10 +990,7 @@ export function TimerControl(): JSX.Element {
 
   const adjustMinutes = (minutes: number): void => {
     const delta = minutes * 60
-    updateTimerControl({
-      duration: Math.max(0, timer.duration + delta),
-      remaining: timer.remaining + delta
-    })
+    updateTimerControl({ remaining: timer.remaining + delta })
   }
 
   const restoreTimerFromLive = (): void => {
@@ -1020,7 +1010,7 @@ export function TimerControl(): JSX.Element {
 
   const restartTimer = (): void => {
     const seconds = timePartsDirty ? secondsFromTimeParts(timeParts) : timer.duration
-    updateTimerControl({ duration: seconds, remaining: seconds, running: true })
+    updateTimerControl({ duration: seconds, remaining: seconds, running: true }, { commitSession: true })
     setTimeParts(timePartsFromSeconds(seconds))
     setEditingTime(false)
     setTimePartsDirty(false)
@@ -1102,7 +1092,7 @@ export function TimerControl(): JSX.Element {
         <div className="transport">
           <button className="pause" title="Пауза" onClick={() => updateTimerControl({ running: false })}>Ⅱ</button>
           <button className={`play ${timer.running ? 'active' : ''}`} title="Старт" onClick={() => updateTimerControl({ running: true })}>▶</button>
-          <button className="stop" title="Стоп и сброс" onClick={() => updateTimerControl({ running: false, remaining: timer.duration }, { keepCost: true })}>■</button>
+          <button className="stop" title="Стоп и сброс" onClick={() => updateTimerControl({ running: false, remaining: timer.duration }, { commitSession: true })}>■</button>
           <button className="refresh" title="Запустить заново с набранного времени" aria-label="Рефреш" onClick={restartTimer}>
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
               <path d="M20.5 12a8.5 8.5 0 1 1-2.5-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -1546,7 +1536,7 @@ export function TimerControl(): JSX.Element {
                     <button className={timer.overtimeMode === 'both' ? 'active' : ''} onClick={() => setOvertimeMode('both')}>Считать таймер и время</button>
                   </div>
                 </div>
-                <button className="danger-ghost" onClick={() => updateDraft({ overtimeCostTotal: 0 })}>Сбросить итог</button>
+                <button className="danger-ghost" onClick={() => updateDraft({ overtimeCostTotal: 0, overtimeCostBanked: 0, sessionOvertimeCost: 0, timerOvertimeElapsed: 0, scheduleOvertimeElapsed: 0 })}>Сбросить итог</button>
                 </>}
               </div>
 

@@ -40,32 +40,95 @@ function billedOvertimeSeconds(seconds: number, interval: number): number {
   return Math.floor(seconds / interval) * interval
 }
 
-/** Timer overtime money follows the current negative time, including after a manual jump. */
-export function retargetTimerCost(
-  timer: TimerState,
-  nextRemaining: number
-): { overtimeCostTotal: number; timerOvertimeElapsed: number } {
-  const interval = overtimeInterval(timer)
-  const countsTimer = (timer.overtimeMode === 'timer' || timer.overtimeMode === 'both')
+export interface OvertimeCost {
+  overtimeCostBanked: number
+  sessionOvertimeCost: number
+  overtimeCostTotal: number
+  timerOvertimeElapsed: number
+}
+
+function countsTimerOvertime(timer: TimerState): boolean {
+  return (timer.overtimeMode === 'timer' || timer.overtimeMode === 'both')
     && timer.allowNegative.timer
     && timer.timerCostPerMinute > 0
-  if (!countsTimer) {
+}
+
+function sessionMoney(timer: TimerState, remaining: number): number {
+  if (!countsTimerOvertime(timer)) return 0
+  const billed = billedOvertimeSeconds(Math.max(0, -remaining), overtimeInterval(timer))
+  return (billed / 60) * timer.timerCostPerMinute
+}
+
+function packCost(banked: number, session: number, elapsed: number): OvertimeCost {
+  return {
+    overtimeCostBanked: banked,
+    sessionOvertimeCost: session,
+    overtimeCostTotal: Math.max(0, banked + session),
+    timerOvertimeElapsed: elapsed
+  }
+}
+
+/** Saved totals from before the split count as already recorded money, minus this timer's overtime. */
+export function splitOvertimeCost(timer: TimerState): { banked: number; session: number } {
+  const banked = timer.overtimeCostBanked
+  const session = timer.sessionOvertimeCost
+  if (typeof banked === 'number' && typeof session === 'number') return { banked, session }
+  const current = sessionMoney(timer, timer.remaining)
+  return {
+    session: current,
+    banked: Math.max(0, (timer.overtimeCostTotal || 0) - current)
+  }
+}
+
+export function initialOvertimeCost(input: {
+  total: number
+  banked: unknown
+  session: unknown
+  remaining: number
+  mode: TimerState['overtimeMode']
+  allowNegative: boolean
+  rate: number
+  interval: number
+}): Pick<OvertimeCost, 'overtimeCostBanked' | 'sessionOvertimeCost' | 'overtimeCostTotal'> {
+  const limit = 1_000_000_000_000
+  const clamp = (value: number): number => Math.min(limit, Math.max(0, value))
+  if (typeof input.banked === 'number' && Number.isFinite(input.banked)
+    && typeof input.session === 'number' && Number.isFinite(input.session)) {
+    const banked = clamp(input.banked)
+    const session = clamp(input.session)
     return {
-      overtimeCostTotal: timer.overtimeCostTotal,
-      timerOvertimeElapsed: nextRemaining < 0 ? timer.timerOvertimeElapsed : 0
+      overtimeCostBanked: banked,
+      sessionOvertimeCost: session,
+      overtimeCostTotal: clamp(banked + session)
     }
   }
-  const before = billedOvertimeSeconds(Math.max(0, -timer.remaining), interval)
-  const afterSeconds = Math.max(0, -nextRemaining)
-  const after = billedOvertimeSeconds(afterSeconds, interval)
-  const afterMoney = (after / 60) * timer.timerCostPerMinute
-  const overtimeCostTotal = timer.overtimeMode === 'timer'
-    ? afterMoney
-    : Math.max(0, timer.overtimeCostTotal + afterMoney - (before / 60) * timer.timerCostPerMinute)
+  const counts = (input.mode === 'timer' || input.mode === 'both') && input.allowNegative && input.rate > 0
+  const interval = Math.min(3600, Math.max(1, Math.trunc(input.interval) || 1))
+  const billed = counts ? billedOvertimeSeconds(Math.max(0, -input.remaining), interval) : 0
+  const session = clamp((billed / 60) * input.rate)
+  const banked = clamp(Math.max(0, input.total - session))
   return {
-    overtimeCostTotal,
-    timerOvertimeElapsed: afterSeconds - after
+    overtimeCostBanked: banked,
+    sessionOvertimeCost: session,
+    overtimeCostTotal: clamp(banked + session)
   }
+}
+
+/** Close this timer: its overtime is recorded and later jumps cannot change it. */
+export function commitTimerSession(timer: TimerState): OvertimeCost {
+  const { banked, session } = splitOvertimeCost(timer)
+  return packCost(banked + session, 0, 0)
+}
+
+/** +/- minutes rewrites only the open timer session. Recorded overtime stays put. */
+export function retargetTimerCost(timer: TimerState, nextRemaining: number): OvertimeCost {
+  const { banked, session } = splitOvertimeCost(timer)
+  if (!countsTimerOvertime(timer)) {
+    return packCost(banked, session, nextRemaining < 0 ? (timer.timerOvertimeElapsed || 0) : 0)
+  }
+  const afterSeconds = Math.max(0, -nextRemaining)
+  const after = billedOvertimeSeconds(afterSeconds, overtimeInterval(timer))
+  return packCost(banked, (after / 60) * timer.timerCostPerMinute, afterSeconds - after)
 }
 
 export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolean): TimerState {
@@ -94,13 +157,14 @@ export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolea
   ) return timer
   const schedule = accrueOvertime(timer.scheduleOvertimeElapsed, scheduleActive, timer.scheduleCostPerMinute, interval)
   const countdown = accrueOvertime(timer.timerOvertimeElapsed, timerActive, timer.timerCostPerMinute, interval)
+  const parts = splitOvertimeCost(timer)
+  const cost = packCost(parts.banked + schedule.add, parts.session + countdown.add, countdown.elapsed)
   return {
     ...timer,
     remaining,
     running,
     scheduleOvertimeElapsed: schedule.elapsed,
-    timerOvertimeElapsed: countdown.elapsed,
-    overtimeCostTotal: Math.max(0, timer.overtimeCostTotal + schedule.add + countdown.add)
+    ...cost
   }
 }
 

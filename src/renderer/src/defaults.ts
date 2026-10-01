@@ -1,6 +1,7 @@
 import { DEFAULT_SCENE_SLOTS, DEFAULT_SLOT_SHOWN, PRESET_SLOT_COUNT, SCENE_SLOT_ORDER } from '../../shared'
 import type { CountdownFlags, CountdownMode, CountdownSeconds, OvertimeMode, SceneFontFamily, SceneSlotShown, SceneSlots, SceneTextStyle, SceneTextStyles, ScreenConfig, ScreenPreset, SlotContent, TimerCentralMode, TimerSettings, TimerState, TimerVisibility } from '../../shared'
 import { nearestFontWeight, sceneFont } from './fonts'
+import { initialOvertimeCost } from './timer-utils'
 
 export const DEFAULT_TIMER: TimerState = {
   eventName: 'Оперативное совещание',
@@ -15,6 +16,8 @@ export const DEFAULT_TIMER: TimerState = {
   scheduleCostPerMinute: 0,
   timerCostPerMinute: 0,
   overtimeCostTotal: 0,
+  overtimeCostBanked: 0,
+  sessionOvertimeCost: 0,
   scheduleOvertimeElapsed: 0,
   timerOvertimeElapsed: 0,
   overtimeIntervalSeconds: 1,
@@ -208,7 +211,16 @@ function normalizeTimerState(
       endTime: clockTime(timerRaw.endTime, DEFAULT_TIMER.endTime),
       scheduleCostPerMinute: number(timerRaw.scheduleCostPerMinute, legacyCost, 0, 1_000_000_000),
       timerCostPerMinute: number(timerRaw.timerCostPerMinute, legacyCost, 0, 1_000_000_000),
-      overtimeCostTotal: number(timerRaw.overtimeCostTotal, 0, 0, 1_000_000_000_000),
+      ...initialOvertimeCost({
+        total: number(timerRaw.overtimeCostTotal, 0, 0, 1_000_000_000_000),
+        banked: timerRaw.overtimeCostBanked,
+        session: timerRaw.sessionOvertimeCost,
+        remaining: Math.trunc(number(timerRaw.remaining, duration, -7 * 24 * 3600, 7 * 24 * 3600)),
+        mode: overtimeMode,
+        allowNegative: countdownFlags(timerRaw.allowNegative, DEFAULT_TIMER.allowNegative).timer,
+        rate: number(timerRaw.timerCostPerMinute, legacyCost, 0, 1_000_000_000),
+        interval: Math.round(number(timerRaw.overtimeIntervalSeconds, 1, 1, 3600))
+      }),
       scheduleOvertimeElapsed: 0,
       timerOvertimeElapsed: 0,
       overtimeIntervalSeconds: Math.round(number(timerRaw.overtimeIntervalSeconds, 1, 1, 3600)),
