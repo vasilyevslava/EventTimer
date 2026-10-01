@@ -143,13 +143,19 @@ export function presentCost(timer: TimerState, now: Date): TimerState {
   const parts = splitOvertimeCost(timer)
   const incremental = Math.max(0, timer.scheduleOvertimeCost || 0)
   const countingFullEvent = !!timer.countFullEventOvertime
-  const realtime = countsScheduleMode(timer.overtimeMode) || countingFullEvent ? incremental : 0
+  const holding = timer.overtimeMode === 'none'
+  const realtime = !holding && (countsScheduleMode(timer.overtimeMode) || countingFullEvent) ? incremental : 0
   const storedCredit = timer.fullEventOvertimeCredit
   const credit = !countingFullEvent
     ? 0
     : typeof storedCredit === 'number'
       ? Math.max(0, storedCredit)
       : captureFullEventCredit(timer, now)
+  const counted = Math.max(0, parts.banked + parts.session + realtime + credit)
+  const held = typeof timer.overtimeHoldTotal === 'number'
+    ? timer.overtimeHoldTotal
+    : timer.overtimeCostTotal
+  const total = holding ? Math.max(0, held || 0) : counted
   return {
     ...timer,
     overtimeCostBanked: parts.banked,
@@ -157,7 +163,8 @@ export function presentCost(timer: TimerState, now: Date): TimerState {
     scheduleOvertimeCost: incremental,
     countFullEventOvertime: countingFullEvent,
     fullEventOvertimeCredit: credit,
-    overtimeCostTotal: Math.max(0, parts.banked + parts.session + realtime + credit)
+    overtimeHoldTotal: holding ? total : null,
+    overtimeCostTotal: total
   }
 }
 
@@ -183,9 +190,11 @@ export function advanceTimer(timer: TimerState, now: Date, tickCountdown: boolea
   const mode = timer.overtimeMode
   const counting = timer.running
   const pastEnd = timer.allowNegative['to-end'] && secondsUntilTime(now, timer.endTime) < 0
-  const scheduleActive = pastEnd && (countsScheduleMode(mode) || !!timer.countFullEventOvertime)
-  const fullEventActive = !!timer.countFullEventOvertime && pastEnd && timer.scheduleCostPerMinute > 0
-  const timerActive = counting
+  const ignoringOvertime = mode === 'none'
+  const scheduleActive = !ignoringOvertime && pastEnd && (countsScheduleMode(mode) || !!timer.countFullEventOvertime)
+  const fullEventActive = !ignoringOvertime && !!timer.countFullEventOvertime && pastEnd && timer.scheduleCostPerMinute > 0
+  const timerActive = !ignoringOvertime
+    && counting
     && (mode === 'timer' || mode === 'both')
     && timer.allowNegative.timer
     && remaining < 0

@@ -2,7 +2,7 @@ export type TimerCentralMode = 'current' | 'timer' | 'to-start' | 'to-end'
 export type CountdownMode = 'timer' | 'to-start' | 'to-end'
 export type CountdownFlags = Record<CountdownMode, boolean>
 export type CountdownSeconds = Record<CountdownMode, number>
-export type OvertimeMode = 'schedule' | 'timer' | 'both'
+export type OvertimeMode = 'schedule' | 'timer' | 'both' | 'none'
 export type SoundSlot = 'warning' | 'finish'
 export type TimerHeadings = Record<TimerCentralMode, string>
 export type SceneTextKey = 'clock' | 'date' | 'schedule' | 'heading' | 'time' | 'event' | 'remaining' | 'cost'
@@ -65,6 +65,7 @@ export interface TimerState {
   scheduleOvertimeCost: number
   countFullEventOvertime: boolean
   fullEventOvertimeCredit: number
+  overtimeHoldTotal: number | null
   scheduleOvertimeElapsed: number
   timerOvertimeElapsed: number
   overtimeIntervalSeconds: number

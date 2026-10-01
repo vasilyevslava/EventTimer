@@ -1,6 +1,6 @@
 {
   "name": "event-timer",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "Standalone event timer for Windows and macOS",
   "author": "mirslava88",
   "license": "MIT",

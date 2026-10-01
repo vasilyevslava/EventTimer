@@ -1325,6 +1325,11 @@ input[type="time"] {
   background: #101716;
 }
 
+.settings-card:not(.is-collapsed) {
+  border-color: #1fbf76;
+  background: #12261c;
+}
+
 .settings-card .section-label { margin: 0; }
 
 .element-editor {

@@ -1038,15 +1038,29 @@ export function TimerControl(): JSX.Element {
   }, [isLive, liveControl, timer.running])
 
   const applyOvertimeMode = (current: TimerState, overtimeMode: TimerState['overtimeMode']): TimerState => {
+    const now = new Date()
+    if (overtimeMode === 'none') {
+      const shown = current.overtimeMode === 'none' ? current : presentCost(current, now)
+      return presentCost({
+        ...shown,
+        overtimeMode: 'none',
+        overtimeHoldTotal: shown.overtimeCostTotal,
+        scheduleOvertimeElapsed: 0,
+        timerOvertimeElapsed: 0
+      }, now)
+    }
     const enteringSchedule = overtimeMode === 'schedule' && current.overtimeMode !== 'schedule'
     const enteringBothFromTimer = overtimeMode === 'both' && current.overtimeMode === 'timer'
-    const now = new Date()
-    const next = {
+    let next: TimerState = {
       ...current,
       overtimeMode,
+      overtimeHoldTotal: null,
       scheduleOvertimeElapsed: 0,
       timerOvertimeElapsed: 0,
       scheduleOvertimeCost: enteringSchedule || enteringBothFromTimer ? 0 : (current.scheduleOvertimeCost || 0)
+    }
+    if ((overtimeMode === 'timer' || overtimeMode === 'both') && current.overtimeMode === 'none') {
+      next = { ...next, ...retargetTimerCost(next, next.remaining) }
     }
     if (next.countFullEventOvertime && (enteringSchedule || enteringBothFromTimer)) {
       next.fullEventOvertimeCredit = captureFullEventCredit(next, now)
@@ -1086,7 +1100,8 @@ export function TimerControl(): JSX.Element {
         overtimeCostBanked: 0,
         sessionOvertimeCost: 0,
         scheduleOvertimeCost: 0
-      }, new Date()) : 0
+      }, new Date()) : 0,
+      overtimeHoldTotal: current.overtimeMode === 'none' ? 0 : null
     }, new Date())
     setTimer(apply)
     if (isLive) setLiveTimer((current) => current ? apply(current) : current)
@@ -1307,27 +1322,13 @@ export function TimerControl(): JSX.Element {
                         )}
                       </>
                     )}
-                    {selectedText === 'time' && (
-                      <>
-                        {!timer.visibility.heading && (
-                          <HeadingField
-                            label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
-                            value={timer.headings[timer.centralTimeMode]}
-                            onChange={(value) => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: value } })}
-                            onReset={() => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: defaultHeading(timer.centralTimeMode) } })}
-                          />
-                        )}
-                        <div className="look-grid">
-                          <label className="swatch">
-                            <span>Цвет предупреждения</span>
-                            <input type="color" value={timer.warningColor} onChange={(event) => updateDraft({ warningColor: event.target.value })} />
-                          </label>
-                          <label className="swatch">
-                            <span>Цвет минуса</span>
-                            <input type="color" value={timer.overtimeColor} onChange={(event) => updateDraft({ overtimeColor: event.target.value })} />
-                          </label>
-                        </div>
-                      </>
+                    {selectedText === 'time' && !timer.visibility.heading && (
+                      <HeadingField
+                        label={timer.centralTimeMode === 'current' ? 'Заголовок времени' : 'Заголовок'}
+                        value={timer.headings[timer.centralTimeMode]}
+                        onChange={(value) => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: value } })}
+                        onReset={() => updateDraft({ headings: { ...timer.headings, [timer.centralTimeMode]: defaultHeading(timer.centralTimeMode) } })}
+                      />
                     )}
                     {selectedText === 'event' && (
                       <label>
@@ -1527,7 +1528,7 @@ export function TimerControl(): JSX.Element {
                 >
                   <span className="card-title">Стоимость</span>
                   <span className="card-toggle-meta">
-                    {timer.overtimeMode === 'timer' ? 'Таймер' : timer.overtimeMode === 'both' ? 'Таймер + время' : 'Время мероприятия'}
+                    {timer.overtimeMode === 'none' ? 'Не учитывать' : timer.overtimeMode === 'timer' ? 'Таймер' : timer.overtimeMode === 'both' ? 'Таймер + время' : 'Время мероприятия'}
                   </span>
                   <span className={`card-chevron ${costOpen ? 'is-open' : ''}`} aria-hidden="true" />
                 </button>
@@ -1586,6 +1587,7 @@ export function TimerControl(): JSX.Element {
                     <button className={timer.overtimeMode === 'schedule' ? 'active' : ''} onClick={() => setOvertimeMode('schedule')}>Время перелимита мероприятия</button>
                     <button className={timer.overtimeMode === 'timer' ? 'active' : ''} onClick={() => setOvertimeMode('timer')}>Таймер</button>
                     <button className={timer.overtimeMode === 'both' ? 'active' : ''} onClick={() => setOvertimeMode('both')}>Таймер + время перелимита мероприятия</button>
+                    <button className={timer.overtimeMode === 'none' ? 'active' : ''} onClick={() => setOvertimeMode('none')}>Не учитывать перелимиты</button>
                   </div>
                 </div>
                 <div className="visibility-grid stack">
@@ -1647,6 +1649,17 @@ export function TimerControl(): JSX.Element {
                       />
                     </label>
                   )}
+                </div>
+                <p className="section-label">Цифры таймера</p>
+                <div className="look-grid">
+                  <label className="swatch">
+                    <span>Цвет предупреждения</span>
+                    <input type="color" value={timer.warningColor} onChange={(event) => updateDraft({ warningColor: event.target.value })} />
+                  </label>
+                  <label className="swatch">
+                    <span>Цвет минуса</span>
+                    <input type="color" value={timer.overtimeColor} onChange={(event) => updateDraft({ overtimeColor: event.target.value })} />
+                  </label>
                 </div>
                 <p className="text-edit-hint">Размер и толщина текста — в настройках выбранного блока.</p>
                 </>}

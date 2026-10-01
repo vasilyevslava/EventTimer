@@ -21,6 +21,7 @@ export const DEFAULT_TIMER: TimerState = {
   scheduleOvertimeCost: 0,
   countFullEventOvertime: false,
   fullEventOvertimeCredit: 0,
+  overtimeHoldTotal: null,
   scheduleOvertimeElapsed: 0,
   timerOvertimeElapsed: 0,
   overtimeIntervalSeconds: 1,
@@ -171,7 +172,7 @@ export function normalizeSettings(raw: unknown): TimerSettings {
   }
 
   const duration = Math.trunc(number(timerRaw.duration, DEFAULT_TIMER.duration, 0, 99 * 3600 + 3599))
-  const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both']
+  const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both', 'none']
   const overtimeMode = overtimeModes.includes(timerRaw.overtimeMode as OvertimeMode)
     ? timerRaw.overtimeMode as OvertimeMode
     : timerRaw.scheduleOvertime === false
@@ -202,6 +203,9 @@ function normalizeTimerState(
   const slots = normalizeSlots(timerRaw.slots, visibility)
   const slotShown = normalizeSlotShown(timerRaw.slotShown, slots)
   const shown = new Set(SCENE_SLOT_ORDER.filter((key) => slotShown[key]).map((key) => slots[key]))
+  const overtimeHoldTotal = overtimeMode === 'none'
+    ? number(timerRaw.overtimeHoldTotal ?? timerRaw.overtimeCostTotal, 0, 0, 1_000_000_000_000)
+    : null
   return {
       eventName: string(timerRaw.eventName, DEFAULT_TIMER.eventName),
       headings: {
@@ -227,6 +231,8 @@ function normalizeTimerState(
       scheduleOvertimeCost: number(timerRaw.scheduleOvertimeCost, 0, 0, 1_000_000_000_000),
       countFullEventOvertime: timerRaw.countFullEventOvertime === true,
       fullEventOvertimeCredit: number(timerRaw.fullEventOvertimeCredit, 0, 0, 1_000_000_000_000),
+      overtimeHoldTotal,
+      ...(overtimeHoldTotal == null ? {} : { overtimeCostTotal: overtimeHoldTotal }),
       scheduleOvertimeElapsed: 0,
       timerOvertimeElapsed: 0,
       overtimeIntervalSeconds: Math.round(number(timerRaw.overtimeIntervalSeconds, 1, 1, 3600)),
@@ -400,7 +406,7 @@ function visibilityFrom(timerRaw: Record<string, unknown>): TimerVisibility {
 }
 
 function overtimeModeFrom(timerRaw: Record<string, unknown>): OvertimeMode {
-  const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both']
+  const overtimeModes: OvertimeMode[] = ['schedule', 'timer', 'both', 'none']
   return overtimeModes.includes(timerRaw.overtimeMode as OvertimeMode)
     ? timerRaw.overtimeMode as OvertimeMode
     : timerRaw.scheduleOvertime === false
