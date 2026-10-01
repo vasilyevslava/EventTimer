@@ -26,10 +26,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $installer = Get-Item -LiteralPath 'dist\EventTimer-1.0.0-win-x64.exe'
+          $installer = Get-ChildItem -LiteralPath dist -Filter 'EventTimer-*-Windows.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not produced' }
           $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
           "$hash  $($installer.Name)" | Set-Content -Encoding utf8 -LiteralPath 'dist\SHA256SUMS-windows.txt'
-          gh release upload v1.0.0 $installer.FullName 'dist\SHA256SUMS-windows.txt' --clobber --repo $env:GITHUB_REPOSITORY
+          gh release upload $env:GITHUB_REF_NAME $installer.FullName 'dist\SHA256SUMS-windows.txt' --clobber --repo $env:GITHUB_REPOSITORY
 
   macos-intel:
     runs-on: macos-15-intel
@@ -107,4 +108,4 @@ jobs:
         run: |
           cd dist
           shasum -a 256 *.dmg *.zip > SHA256SUMS-macos.txt
-          gh release upload v1.0.0 ./*.dmg ./*.zip ./SHA256SUMS-macos.txt --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$GITHUB_REF_NAME" ./*.dmg ./*.zip ./SHA256SUMS-macos.txt --clobber --repo "$GITHUB_REPOSITORY"
